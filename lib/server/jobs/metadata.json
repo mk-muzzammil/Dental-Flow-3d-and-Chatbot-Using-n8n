@@ -1,0 +1,3 @@
+[
+  {"id":"release-expired-holds","name":"Release expired holds","cron":"*/10 * * * *","timezone":"UTC","budgetSeconds":240,"nativePlans":["pro"],"enabled":true,"version":"1","graceSeconds":120,"dependencies":["mongodb","sheets","calendar","gmail"]}
+]

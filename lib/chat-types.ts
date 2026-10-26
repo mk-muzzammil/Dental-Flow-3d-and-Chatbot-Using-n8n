@@ -41,7 +41,7 @@ export type DemoState = { step: 'start' | 'treatment' | 'time' | 'details' | 'co
 
 const str = (v: unknown, n: number) => (typeof v === 'string' ? v.replace(/\r/g, '').slice(0, n) : '');
 
-/** Accepts whatever came back from n8n and keeps only the expected, size-limited fields. */
+/** Accepts the service response and keeps only the expected, size-limited fields. */
 export function cleanResponse(raw: unknown): ChatResponse {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const r = (o.response && typeof o.response === 'object' ? o.response : o) as Record<string, unknown>;
@@ -64,7 +64,7 @@ export function cleanResponse(raw: unknown): ChatResponse {
     carousel: carouselItems.length ? { label: str(car?.label, 80), items: carouselItems } : null,
     booking: b && str(b.reference, 40) ? {
       reference: str(b.reference, 40), when: str(b.when, 120), service: str(b.service, 120), dentist: str(b.dentist, 120),
-      whatsappSent: b.whatsappSent === true, emailCopy: b.emailCopy === true,
+      whatsappSent: false, emailCopy: b.emailCopy === true,
     } : null,
     note: str(r.note, 2000),
     lang: str(r.lang, 10) || 'en',

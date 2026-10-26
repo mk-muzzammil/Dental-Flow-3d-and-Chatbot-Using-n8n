@@ -2,23 +2,35 @@
   "name": "dentalflow-website",
   "version": "1.0.0",
   "private": true,
-  "description": "Clinic landing page with scroll-linked 3D and a chat widget connected to DentalFlow (n8n).",
+  "description": "Multilingual dental clinic website with native Next.js booking, Google integrations, and administration.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prebuild": "node scripts/cron-config.mjs check",
+    "cron:generate": "node scripts/cron-config.mjs generate",
+    "cron:check": "node scripts/cron-config.mjs check",
+    "cron:select": "node scripts/cron-config.mjs select",
+    "db:init": "node --conditions=react-server --import tsx scripts/init-db.ts",
+    "admin:hash": "node scripts/hash-password.mjs"
   },
   "dependencies": {
     "@fontsource-variable/manrope": "5.3.0",
     "@fontsource/ibm-plex-sans-arabic": "5.3.0",
     "@fontsource/noto-nastaliq-urdu": "5.3.0",
+    "@google/genai": "^2.31.0",
     "@react-three/drei": "10.7.9",
     "@react-three/fiber": "9.8.1",
+    "cron-parser": "^5.10.2",
+    "google-auth-library": "^11.3.1",
+    "jose": "^6.2.13",
+    "mongodb": "^7.7.0",
     "motion": "14.1.0",
-    "next": "16.4.0",
+    "next": "16.4.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "server-only": "^0.0.1",
     "three": "0.186.1"
   },
   "devDependencies": {
@@ -28,6 +40,7 @@
     "@types/react-dom": "19.3.0",
     "@types/three": "0.186.0",
     "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "5.9.3"
   }
 }

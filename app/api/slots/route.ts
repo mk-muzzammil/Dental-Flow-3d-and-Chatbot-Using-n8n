@@ -1,23 +1,12 @@
-/**
- * GET /api/slots: free times for the booking panel in the chat, straight from
- * the clinic's diary (workflow 01's /slots), without going through the
- * assistant. Three questions:
- *   ?mode=doctors&service=whiten                  who does this treatment
- *   ?mode=next&service=whiten&doctor=any&lang=en  the next free times this week
- *   ?mode=day&service=whiten&doctor=any&date=YYYY-MM-DD   every free time that day
- * Without N8N_WEB_CHAT_URL it answers with example times (demo mode).
- */
 import { NextResponse, type NextRequest } from 'next/server';
 import { dentists } from '@/content/clinic';
 import type { DoctorsAnswer, SlotOption, SlotsAnswer } from '@/lib/slots';
 import { nextDays } from '@/lib/slots';
+import { slots } from '@/lib/server/dental/clinic';
+import { appMode, safeError, deadline } from '@/lib/server/config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const CHAT_URL = process.env.N8N_WEB_CHAT_URL?.trim() ?? '';
-// The slots address is next to the chat one: .../webhook/web-chat -> .../webhook/slots (or set N8N_SLOTS_URL).
-const SLOTS_URL = process.env.N8N_SLOTS_URL?.trim() || (CHAT_URL ? CHAT_URL.replace(/\/web-chat\/?$/, '/slots') : '');
 
 const hits = new Map<string, number[]>();
 function limited(ip: string) {
@@ -60,22 +49,13 @@ export async function GET(req: NextRequest) {
   if (!ID.test(doctor)) return bad('bad_doctor');
   if (mode === 'day' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return bad('bad_date');
 
-  if (!SLOTS_URL) {
+  if (appMode() === 'demo') {
     await new Promise(r => setTimeout(r, 400));
     return NextResponse.json(demo(mode, doctor, date));
   }
 
-  const u = new URL(SLOTS_URL);
-  if (mode === 'doctors') { u.searchParams.set('list', 'doctors'); if (service) u.searchParams.set('service', service); }
-  else {
-    u.searchParams.set('service', service);
-    u.searchParams.set('doctor', doctor);
-    if (mode === 'next') { u.searchParams.set('next', '1'); u.searchParams.set('lang', lang); } else u.searchParams.set('date', date);
-  }
   try {
-    const res = await fetch(u, { headers: { 'ngrok-skip-browser-warning': '1' }, signal: AbortSignal.timeout(20_000), cache: 'no-store' });
-    if (!res.ok) { console.error('[slots] n8n answered', res.status, 'for', u.pathname); return bad('upstream', 502); }
-    const j = await res.json() as Record<string, unknown>;
+    const j = await slots({ mode, service, doctor, date, lang }, deadline(20_000, req.signal));
     const str = (v: unknown) => (typeof v === 'string' ? v : '');
     if (mode === 'doctors') {
       const list = Array.isArray(j.doctors) ? j.doctors : [];
@@ -98,8 +78,7 @@ export async function GET(req: NextRequest) {
       }
     }
     return NextResponse.json({ options: [...seen.values()].sort((a, b) => a.time.localeCompare(b.time)), reason } satisfies SlotsAnswer);
-  } catch (e) {
-    console.error('[slots] cannot reach n8n at', SLOTS_URL, e instanceof Error ? e.name : e);
-    return bad('unreachable', 504);
+  } catch (error) {
+    const detail = safeError(error); return bad(detail.code, detail.status);
   }
 }

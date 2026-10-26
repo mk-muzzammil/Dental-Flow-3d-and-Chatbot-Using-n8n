@@ -10,15 +10,15 @@ export const dirOf = (l: Lang) => (l === 'en' ? 'ltr' : 'rtl');
 export const langLabel: Record<Lang, string> = { en: 'English', ur: 'اردو', ar: 'العربية' };
 
 const en = {
-  meta: { title: 'Calm, precise dentistry, booked in a minute', description: 'Several dental specialists under one roof. Book in our chat in English, Urdu or Arabic, with confirmation by email and WhatsApp.' },
+  meta: { title: 'Calm, precise dentistry, booked in a minute', description: 'Several dental specialists under one roof. Book in our chat in English, Urdu or Arabic, with immediate confirmation in the chat and a copy by email.' },
   nav: { treatments: 'Treatments', dentists: 'Dentists', how: 'How it works', visit: 'Visit', faq: 'FAQ', book: 'Book now', menu: 'Menu', language: 'Language' },
   hero: {
     eyebrow: 'Dental care in {city}',
     title1: 'Calm, precise dentistry.',
     title2: 'Booked in a minute.',
-    sub: 'Several specialists under one roof. Choose a time in our chat, get your confirmation by email and on WhatsApp, and we’ll remind you the day before.',
+    sub: 'Several specialists under one roof. Choose a time in our chat, confirm your appointment, and receive a copy by email.',
     cta: 'Book in chat', secondary: 'Explore treatments',
-    chips: ['Open 6 days a week', 'English · اردو · العربية', 'Confirmation on WhatsApp'],
+    chips: ['Open 6 days a week', 'English · اردو · العربية', 'Confirmed in the chat'],
     scroll: 'Scroll',
   },
   story: {
@@ -39,11 +39,11 @@ const en = {
     steps: [
       { title: 'Tell the assistant what you need', body: 'In English, Urdu or Arabic, at any hour.' },
       { title: 'Tap a time that suits you', body: 'Real free times across the coming week, each with the dentist’s name.' },
-      { title: 'Get it in writing', body: 'Your confirmation arrives by email and on WhatsApp, and a reminder the day before.' },
+      { title: 'Get it in writing', body: 'Your appointment is confirmed in the chat, with a confirmation copy sent by email.' },
     ],
     cta: 'Start booking',
   },
-  visit: { eyebrow: 'Visit us', title: 'Easy to find, easy to reach', hours: 'Opening hours', closed: 'Closed', call: 'Call', whatsapp: 'WhatsApp', map: 'Open in Google Maps', address: 'Address' },
+  visit: { eyebrow: 'Visit us', title: 'Easy to find, easy to reach', hours: 'Opening hours', closed: 'Closed', call: 'Call', map: 'Open in Google Maps', address: 'Address' },
   faq: { eyebrow: 'Questions', title: 'Good to know' },
   footer: { rights: 'All rights reserved.', powered: 'Online booking by DentalFlow' },
   chat: {
@@ -53,14 +53,14 @@ const en = {
     starters: ['Book New Appointment', 'View My Appointments', 'Cancel an Appointment'],
     demo: 'Demo mode: not connected to the clinic yet. Nothing is booked.',
     error: 'I couldn’t reach the clinic just now. Please try again in a moment.',
-    booked: 'Appointment confirmed', reference: 'Reference', sentEmail: 'Confirmation sent by email', sentBoth: 'Confirmation sent by email and WhatsApp',
+    booked: 'Appointment confirmed', reference: 'Reference', sentEmail: 'Confirmation sent by email', emailFailed: 'Appointment confirmed. The email copy could not be sent.',
     privacy: 'Please don’t share medical records here. For anything urgent, call {phone}.',
     scrollHint: 'Swipe for more',
     bookThis: 'I’d like to book {service}', bookWith: 'I’d like to book with {name}', demoBadge: 'Demo', poweredBy: 'Replies by the clinic’s assistant · may make mistakes', when: 'When', with: 'With', retry: 'Try again',
     panelTitle: 'Book an appointment', stepTreatment: 'Choose a treatment', stepDentist: 'Choose a dentist', stepTime: 'Choose a time', stepDetails: 'Your details',
     anyDentist: 'Any dentist', anyDentistHint: 'The earliest free time', otherDays: 'Other days', pickDay: 'Choose a day', back: 'Back',
     loading: 'Finding free times…', noTimes: 'No free times then. Please try another day or dentist.', slotsError: 'Couldn’t load the free times. Please try again.',
-    name: 'Full name', phone: 'WhatsApp number', phoneHint: 'For the WhatsApp confirmation, e.g. 0300 1234567', email: 'Email', emailHint: 'For the confirmation by email',
+    name: 'Full name', phone: 'Mobile number', phoneHint: 'Your contact number, e.g. 0300 1234567', email: 'Email', emailHint: 'For the confirmation by email',
     confirmBooking: 'Confirm booking', badName: 'Please enter the full name.', badPhone: 'Please enter a valid mobile number.', badEmail: 'Please enter a valid email address.',
     change: 'Change', bookingRequest: 'Booking request', treatmentLabel: 'Treatment', patientLabel: 'Patient',
     voiceStart: 'Record a voice message', voiceStop: 'Send voice message', voiceCancel: 'Cancel', voiceRecording: 'Recording…', voiceNote: 'Voice message',
@@ -99,15 +99,15 @@ const en = {
 type Dict = typeof en;
 
 const ur: Dict = {
-  meta: { title: 'پُرسکون اور ماہرانہ دندان سازی، ایک منٹ میں بکنگ', description: 'ایک ہی چھت تلے دانتوں کے کئی اسپیشلسٹ۔ ہماری چیٹ میں انگریزی، اردو یا عربی میں بکنگ کریں، ای میل اور واٹس ایپ پر کنفرمیشن کے ساتھ۔' },
+  meta: { title: 'پُرسکون اور ماہرانہ دندان سازی، ایک منٹ میں بکنگ', description: 'ایک ہی چھت تلے دانتوں کے کئی اسپیشلسٹ۔ ہماری چیٹ میں انگریزی، اردو یا عربی میں بکنگ کریں، چیٹ میں فوری کنفرمیشن اور ای میل پر نقل کے ساتھ۔' },
   nav: { treatments: 'علاج', dentists: 'ڈاکٹرز', how: 'طریقہ کار', visit: 'پتہ', faq: 'سوالات', book: 'ابھی بک کریں', menu: 'مینو', language: 'زبان' },
   hero: {
     eyebrow: '{city} میں دانتوں کی دیکھ بھال',
     title1: 'پُرسکون اور ماہرانہ علاج۔',
     title2: 'ایک منٹ میں بکنگ۔',
-    sub: 'ایک ہی چھت تلے کئی اسپیشلسٹ۔ ہماری چیٹ میں وقت منتخب کریں، کنفرمیشن ای میل اور واٹس ایپ پر حاصل کریں، اور ہم ایک دن پہلے یاد دہانی کروا دیں گے۔',
+    sub: 'ایک ہی چھت تلے کئی اسپیشلسٹ۔ ہماری چیٹ میں وقت منتخب کریں، چیٹ میں اپائنٹمنٹ کنفرم کریں اور ای میل پر اس کی نقل حاصل کریں۔',
     cta: 'چیٹ میں بک کریں', secondary: 'علاج دیکھیں',
-    chips: ['ہفتے میں 6 دن کھلا', 'English · اردو · العربية', 'واٹس ایپ پر کنفرمیشن'],
+    chips: ['ہفتے میں 6 دن کھلا', 'English · اردو · العربية', 'چیٹ میں کنفرمیشن'],
     scroll: 'نیچے دیکھیں',
   },
   story: {
@@ -128,11 +128,11 @@ const ur: Dict = {
     steps: [
       { title: 'اسسٹنٹ کو اپنی ضرورت بتائیں', body: 'انگریزی، اردو یا عربی میں، کسی بھی وقت۔' },
       { title: 'اپنی سہولت کا وقت منتخب کریں', body: 'اگلے ہفتے کے اصل خالی اوقات، ہر ایک کے ساتھ ڈاکٹر کا نام۔' },
-      { title: 'تحریری کنفرمیشن حاصل کریں', body: 'کنفرمیشن ای میل اور واٹس ایپ پر آتی ہے، اور ایک دن پہلے یاد دہانی بھی۔' },
+      { title: 'تحریری کنفرمیشن حاصل کریں', body: 'اپائنٹمنٹ چیٹ میں کنفرم ہوتی ہے اور ای میل پر اس کی نقل بھیجی جاتی ہے۔' },
     ],
     cta: 'بکنگ شروع کریں',
   },
-  visit: { eyebrow: 'ہم سے ملیں', title: 'آسانی سے پہنچیں', hours: 'اوقاتِ کار', closed: 'بند', call: 'کال کریں', whatsapp: 'واٹس ایپ', map: 'گوگل میپس پر کھولیں', address: 'پتہ' },
+  visit: { eyebrow: 'ہم سے ملیں', title: 'آسانی سے پہنچیں', hours: 'اوقاتِ کار', closed: 'بند', call: 'کال کریں', map: 'گوگل میپس پر کھولیں', address: 'پتہ' },
   faq: { eyebrow: 'سوالات', title: 'مفید معلومات' },
   footer: { rights: 'جملہ حقوق محفوظ ہیں۔', powered: 'آن لائن بکنگ: DentalFlow' },
   chat: {
@@ -142,14 +142,14 @@ const ur: Dict = {
     starters: ['نئی اپائنٹمنٹ بک کریں', 'میری اپائنٹمنٹس دیکھیں', 'اپائنٹمنٹ منسوخ کریں'],
     demo: 'ڈیمو موڈ: ابھی کلینک سے منسلک نہیں۔ کوئی بکنگ نہیں ہو گی۔',
     error: 'اس وقت کلینک سے رابطہ نہیں ہو سکا۔ براہِ کرم تھوڑی دیر بعد دوبارہ کوشش کریں۔',
-    booked: 'اپائنٹمنٹ کنفرم ہو گئی', reference: 'حوالہ نمبر', sentEmail: 'کنفرمیشن ای میل پر بھیج دی گئی', sentBoth: 'کنفرمیشن ای میل اور واٹس ایپ پر بھیج دی گئی',
+    booked: 'اپائنٹمنٹ کنفرم ہو گئی', reference: 'حوالہ نمبر', sentEmail: 'کنفرمیشن ای میل پر بھیج دی گئی', emailFailed: 'اپائنٹمنٹ کنفرم ہے۔ ای میل پر نقل نہیں بھیجی جا سکی۔',
     privacy: 'براہِ کرم یہاں میڈیکل رپورٹس شیئر نہ کریں۔ فوری ضرورت ہو تو کال کریں: {phone}',
     scrollHint: 'مزید کے لیے سوائپ کریں',
     bookThis: 'مجھے {service} کی اپائنٹمنٹ چاہیے', bookWith: 'مجھے {name} کے ساتھ اپائنٹمنٹ چاہیے', demoBadge: 'ڈیمو', poweredBy: 'جوابات کلینک کے اسسٹنٹ کی طرف سے · غلطی ممکن ہے', when: 'وقت', with: 'ڈاکٹر', retry: 'دوبارہ کوشش کریں',
     panelTitle: 'اپائنٹمنٹ بک کریں', stepTreatment: 'علاج منتخب کریں', stepDentist: 'ڈاکٹر منتخب کریں', stepTime: 'وقت منتخب کریں', stepDetails: 'آپ کی تفصیلات',
     anyDentist: 'کوئی بھی ڈاکٹر', anyDentistHint: 'سب سے پہلا دستیاب وقت', otherDays: 'دوسرے دن', pickDay: 'دن منتخب کریں', back: 'واپس',
     loading: 'دستیاب اوقات تلاش کیے جا رہے ہیں…', noTimes: 'اس وقت کوئی وقت دستیاب نہیں۔ براہِ کرم کوئی اور دن یا ڈاکٹر منتخب کریں۔', slotsError: 'دستیاب اوقات لوڈ نہیں ہو سکے۔ براہِ کرم دوبارہ کوشش کریں۔',
-    name: 'پورا نام', phone: 'واٹس ایپ نمبر', phoneHint: 'واٹس ایپ پر کنفرمیشن کے لیے، مثلاً 0300 1234567', email: 'ای میل', emailHint: 'ای میل پر کنفرمیشن کے لیے',
+    name: 'پورا نام', phone: 'موبائل نمبر', phoneHint: 'رابطے کا نمبر، مثلاً 0300 1234567', email: 'ای میل', emailHint: 'ای میل پر کنفرمیشن کے لیے',
     confirmBooking: 'بکنگ کنفرم کریں', badName: 'براہِ کرم پورا نام لکھیں۔', badPhone: 'براہِ کرم درست موبائل نمبر لکھیں۔', badEmail: 'براہِ کرم درست ای میل ایڈریس لکھیں۔',
     change: 'تبدیل کریں', bookingRequest: 'بکنگ کی درخواست', treatmentLabel: 'علاج', patientLabel: 'مریض',
     voiceStart: 'آواز میں پیغام ریکارڈ کریں', voiceStop: 'وائس میسج بھیجیں', voiceCancel: 'منسوخ کریں', voiceRecording: 'ریکارڈنگ جاری ہے…', voiceNote: 'وائس میسج',
@@ -186,15 +186,15 @@ const ur: Dict = {
 };
 
 const ar: Dict = {
-  meta: { title: 'رعاية أسنان هادئة ودقيقة، والحجز خلال دقيقة', description: 'عدة أطباء أسنان متخصصين تحت سقف واحد. يمكن الحجز عبر المحادثة بالإنجليزية أو الأردية أو العربية، مع تأكيد بالبريد الإلكتروني وعلى واتساب.' },
+  meta: { title: 'رعاية أسنان هادئة ودقيقة، والحجز خلال دقيقة', description: 'عدة أطباء أسنان متخصصين تحت سقف واحد. يمكن الحجز عبر المحادثة بالإنجليزية أو الأردية أو العربية، مع تأكيد فوري في المحادثة ونسخة بالبريد الإلكتروني.' },
   nav: { treatments: 'العلاجات', dentists: 'الأطباء', how: 'طريقة الحجز', visit: 'الموقع', faq: 'الأسئلة', book: 'الحجز الآن', menu: 'القائمة', language: 'اللغة' },
   hero: {
     eyebrow: 'رعاية الأسنان في {city}',
     title1: 'رعاية أسنان هادئة ودقيقة.',
     title2: 'والحجز خلال دقيقة.',
-    sub: 'عدة أطباء متخصصين تحت سقف واحد. يمكن اختيار الموعد عبر المحادثة، واستلام التأكيد بالبريد الإلكتروني وعلى واتساب، وسنرسل تذكيراً قبل الموعد بيوم.',
+    sub: 'عدة أطباء متخصصين تحت سقف واحد. يمكن اختيار الموعد عبر المحادثة، وتأكيده فوراً واستلام نسخة بالبريد الإلكتروني.',
     cta: 'الحجز عبر المحادثة', secondary: 'استعراض العلاجات',
-    chips: ['مفتوح 6 أيام في الأسبوع', 'English · اردو · العربية', 'التأكيد على واتساب'],
+    chips: ['مفتوح 6 أيام في الأسبوع', 'English · اردو · العربية', 'تأكيد في المحادثة'],
     scroll: 'للأسفل',
   },
   story: {
@@ -215,11 +215,11 @@ const ar: Dict = {
     steps: [
       { title: 'إخبار المساعد بما تحتاج إليه', body: 'بالإنجليزية أو الأردية أو العربية، في أي وقت.' },
       { title: 'اختيار الموعد المناسب', body: 'مواعيد متاحة فعلاً خلال الأسبوع القادم، مع اسم الطبيب لكل موعد.' },
-      { title: 'استلام التأكيد كتابياً', body: 'يصل التأكيد بالبريد الإلكتروني وعلى واتساب، مع تذكير قبل الموعد بيوم.' },
+      { title: 'استلام التأكيد كتابياً', body: 'يُؤكَّد الموعد في المحادثة وتُرسل نسخة بالبريد الإلكتروني.' },
     ],
     cta: 'ابدأ الحجز',
   },
-  visit: { eyebrow: 'زورونا', title: 'سهل الوصول إلينا', hours: 'ساعات العمل', closed: 'مغلق', call: 'اتصال', whatsapp: 'واتساب', map: 'فتح في خرائط Google', address: 'العنوان' },
+  visit: { eyebrow: 'زورونا', title: 'سهل الوصول إلينا', hours: 'ساعات العمل', closed: 'مغلق', call: 'اتصال', map: 'فتح في خرائط Google', address: 'العنوان' },
   faq: { eyebrow: 'الأسئلة', title: 'معلومات مفيدة' },
   footer: { rights: 'جميع الحقوق محفوظة.', powered: 'الحجز الإلكتروني من DentalFlow' },
   chat: {
@@ -229,14 +229,14 @@ const ar: Dict = {
     starters: ['حجز موعد جديد', 'عرض مواعيدي', 'إلغاء موعد'],
     demo: 'وضع تجريبي: غير متصل بالعيادة بعد، ولن يتم أي حجز.',
     error: 'تعذّر الوصول إلى العيادة الآن. يرجى المحاولة مرة أخرى بعد قليل.',
-    booked: 'تم تأكيد الموعد', reference: 'رقم المرجع', sentEmail: 'أُرسل التأكيد بالبريد الإلكتروني', sentBoth: 'أُرسل التأكيد بالبريد الإلكتروني وعلى واتساب',
+    booked: 'تم تأكيد الموعد', reference: 'رقم المرجع', sentEmail: 'أُرسل التأكيد بالبريد الإلكتروني', emailFailed: 'الموعد مؤكَّد. تعذّر إرسال نسخة البريد الإلكتروني.',
     privacy: 'يرجى عدم مشاركة تقارير طبية هنا. للحالات العاجلة يرجى الاتصال على {phone}',
     scrollHint: 'المزيد عند السحب',
     bookThis: 'أرغب في حجز موعد {service}', bookWith: 'أرغب في حجز موعد مع {name}', demoBadge: 'تجريبي', poweredBy: 'الردود من مساعد العيادة · قد يخطئ أحياناً', when: 'الموعد', with: 'الطبيب', retry: 'إعادة المحاولة',
     panelTitle: 'حجز موعد', stepTreatment: 'اختيار العلاج', stepDentist: 'اختيار الطبيب', stepTime: 'اختيار الموعد', stepDetails: 'بياناتك',
     anyDentist: 'أي طبيب', anyDentistHint: 'أقرب موعد متاح', otherDays: 'أيام أخرى', pickDay: 'اختيار اليوم', back: 'رجوع',
     loading: 'جارٍ البحث عن المواعيد المتاحة…', noTimes: 'لا توجد مواعيد متاحة في هذا الوقت. يرجى اختيار يوم أو طبيب آخر.', slotsError: 'تعذّر تحميل المواعيد المتاحة. يرجى المحاولة مرة أخرى.',
-    name: 'الاسم الكامل', phone: 'رقم واتساب', phoneHint: 'لإرسال التأكيد على واتساب، مثل 0300 1234567', email: 'البريد الإلكتروني', emailHint: 'لإرسال التأكيد بالبريد الإلكتروني',
+    name: 'الاسم الكامل', phone: 'رقم الجوال', phoneHint: 'رقم التواصل، مثل 0300 1234567', email: 'البريد الإلكتروني', emailHint: 'لإرسال التأكيد بالبريد الإلكتروني',
     confirmBooking: 'تأكيد الحجز', badName: 'يرجى كتابة الاسم الكامل.', badPhone: 'يرجى كتابة رقم جوال صحيح.', badEmail: 'يرجى كتابة بريد إلكتروني صحيح.',
     change: 'تعديل', bookingRequest: 'طلب حجز', treatmentLabel: 'العلاج', patientLabel: 'المريض',
     voiceStart: 'تسجيل رسالة صوتية', voiceStop: 'إرسال الرسالة الصوتية', voiceCancel: 'إلغاء', voiceRecording: 'جارٍ التسجيل…', voiceNote: 'رسالة صوتية',

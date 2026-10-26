@@ -1,0 +1,223 @@
+{
+  "name": "DentalFlow · 15 Clinic Info (FAQ, hours, treatments)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "clinic-info",
+        "responseMode": "responseNode",
+        "options": {},
+        "authentication": "headerAuth"
+      },
+      "id": "info-request",
+      "name": "Info Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        300
+      ],
+      "webhookId": "clinic-info-hook"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n/* ==========================================================================\n   >>> EDIT THESE <<<\n   ========================================================================== */\nconst SHEET_ID       = '1N-qE4v81o0uxyXxLFeCamHSkvALFQIixrES3K6-hE6c';\n// Used only when the Settings tab of the sheet does not have these rows.\nconst CLINIC_NAME    = 'Smile Dental Clinic';\nconst CLINIC_ADDRESS = '12 Main Boulevard, Lahore';\nconst CLINIC_PHONE   = '+92 300 000 0000';\nconst CLINIC_MAP_URL = 'https://maps.app.goo.gl/fWLCAxLLaZQMfbTU6';        // Google Maps link\nconst CURRENCY       = 'PKR';\n/* ========================================================================== */\n\nconst q = $input.first().json.query || {};\nconst view = String(q.view || 'faq').toLowerCase() === 'prompt' ? 'prompt' : 'faq';\nconst lg = String(q.lang || '').trim().toLowerCase();\nconst lang = /^ar/.test(lg) ? 'ar' : /roman|latn|^ru$/.test(lg) ? 'roman-ur' : /^ur/.test(lg) ? 'ur' : 'en';\nreturn [{ json: { SHEET_ID, CLINIC_NAME, CLINIC_ADDRESS, CLINIC_PHONE, CLINIC_MAP_URL, CURRENCY, view, lang } }];\n"
+      },
+      "id": "info-config",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -210,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.SHEET_ID }}/values:batchGet?ranges=Services!A2:G&ranges=Hours!A2:G&ranges=Settings!A2:B&ranges=Doctors!A2:F&majorDimension=ROWS",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "info-read",
+      "name": "Read Sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $('Config').first().json.SHEET_ID }}/values/FAQ!A2:F",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "info-read-faq",
+      "name": "Read FAQ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        210,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\n/* CLINIC INFO: what the assistant is allowed to say about the clinic.\n\n   Everything comes from the Google Sheet, so reception controls every word:\n     Services  A id | B name | C minutes | D price | E active | F name_ar | G name_ur\n     Hours     A day | B open | C close | D break_start | E break_end | F closed | G doctor\n     Settings  key | value\n     FAQ       A topic | B question | C answer_en | D answer_ar | E answer_ur | F active\n     Doctors   A doctor_id | B name | C calendar_id | D services | E email | F active | G specializations\n     Specializations  A specialization_id | B name_en | C name_ar | D name_ur | E active\n     Services  H specialization_id\n   The Specializations tab and the two specialization columns are new in\n   stage 4. They are read on their own, so a sheet that does not have them\n   yet still gets everything else.\n\n   view=prompt  the block for the assistant's instructions: clinic details,\n                opening hours, treatments, dentists, specializations and the\n                approved FAQ answers. With all of that in front of it, the\n                assistant answers clinic questions and offers dentists without\n                calling a tool, which is one whole round trip faster.\n   view=faq     the approved answers, in the language asked for (English when\n                that language's answer is empty), plus opening hours and prices. */\nconst c   = $('Config').first().json;\nconst res = $('Read Sheet').first().json || {};        // Services, Hours, Settings: these tabs always exist\nconst quiet = name => { try { return $(name).first().json || {}; } catch (e) { return {}; } };\nconst faqRes  = quiet('Read FAQ');                     // FAQ and Specializations are read on their own, so a\nconst specRes = quiet('Read Specializations');         // missing tab never hides the address or the treatments\nconst code = Number(res.statusCode || 0);\nconst FAQ_INLINE_CHARS = 7000;                         // approved answers longer than this in total stay behind get_faq\nconst clean = v => String(v ?? '').trim();\n\nif (!(code >= 200 && code < 300)) {\n  const why = clean(res.body && res.body.error && res.body.error.message) || `HTTP ${code || 'no response'}`;\n  return [{ json: { ok: false, promptBlock: '', faq: [], error: why,\n    message: 'The clinic information could not be read (check SHEET_ID and the Google Sheets credential in workflow 15). ' +\n             'Tell the patient you will check with the team; do not guess.' } }];\n}\n\nconst vr = (res.body && res.body.valueRanges) || [];\nconst rows = i => (vr[i] && vr[i].values) || [];        // 0 Services 1 Hours 2 Settings 3 Doctors\nconst faqOk = Number(faqRes.statusCode || 0) >= 200 && Number(faqRes.statusCode || 0) < 300;\nconst faqRows = faqOk ? ((faqRes.body && faqRes.body.values) || []) : [];\nconst off = v => clean(v).toUpperCase() === 'FALSE';\nconst set = {}; for (const r of rows(2)) set[clean(r[0])] = r[1];\n\nconst clinic = {\n  name:    clean(set.clinic_name)    || c.CLINIC_NAME,\n  address: clean(set.clinic_address) || c.CLINIC_ADDRESS,\n  phone:   clean(set.clinic_phone)   || c.CLINIC_PHONE,\n  mapUrl:  clean(set.clinic_map_url) || c.CLINIC_MAP_URL\n};\nconst currency = clean(set.currency) || c.CURRENCY;\nconst dl = clean(set.default_language).toLowerCase();\nconst defaultLanguage = /^ar/.test(dl) ? 'Arabic' : /roman/.test(dl) ? 'Roman Urdu' : /^ur/.test(dl) ? 'Urdu' : 'English';\n\n// The stage 4 read: 0 Specializations A:E, 1 Doctors column G, 2 Services column H (row for row with the tabs above).\nconst okSpec = Number(specRes.statusCode || 0) >= 200 && Number(specRes.statusCode || 0) < 300;\nconst sr = i => (okSpec && specRes.body && specRes.body.valueRanges && specRes.body.valueRanges[i] && specRes.body.valueRanges[i].values) || [];\nconst docSpec = sr(1), svcSpec = sr(2);\n\nconst services = rows(0).map((r, i) => ({ r, i })).filter(({ r }) => clean(r[0]) && !off(r[4])).map(({ r, i }) => ({\n  id: clean(r[0]), en: clean(r[1]), ar: clean(r[5]), ur: clean(r[6]),\n  minutes: Number(r[2]) || null, price: Number(r[3]) || null, spec: clean((svcSpec[i] || [])[0]).toLowerCase() }));\n\n// Opening hours: the clinic's own rows (no doctor named), as written in the sheet.\nconst DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];\nconst isClosed = r => clean(r[5]).toUpperCase() === 'TRUE' || !clean(r[1]) || !clean(r[2]);\nconst hhmm = v => clean(v).replace(/^(\\d{1,2}:\\d{2}):\\d{2}$/, '$1');\nconst clinicHours = rows(1).filter(r => clean(r[0]) && !clean(r[6]));\nconst hoursLine = clinicHours.map(r => isClosed(r) ? `${clean(r[0])} closed`\n  : `${clean(r[0])} ${hhmm(r[1])}-${hhmm(r[2])}` + (clean(r[3]) && clean(r[4]) ? ` (break ${hhmm(r[3])}-${hhmm(r[4])})` : '')).join('; ');\n\n// Dentists, with the same rules as the booking engine: a dentist needs an id,\n// a calendar and active not FALSE; none of those means one dentist on the\n// clinic calendar. A dentist with hours rows of their own works only those days.\nconst specs = sr(0)\n  .filter(r => clean(r[0]) && !off(r[4]))\n  .map(r => ({ id: clean(r[0]).toLowerCase(), en: clean(r[1]) || clean(r[0]), ar: clean(r[2]), ur: clean(r[3]) }));\nconst specIds = new Set(specs.map(s => s.id));\nconst list = v => clean(v).toLowerCase().split(/[\\s,;]+/).filter(Boolean);\nconst dentists = rows(3).map((r, i) => ({ id: clean(r[0]).toLowerCase(), name: clean(r[1]) || clean(r[0]), calendarId: clean(r[2]),\n    services: clean(r[3]).toLowerCase(), active: r[5] === undefined || !off(r[5]), specs: list((docSpec[i] || [])[0]).filter(x => specIds.has(x)) }))\n  .filter(d => d.id && d.calendarId && d.active);\nconst does = (d, id) => !d.services || d.services === 'all' || list(d.services).includes(String(id).toLowerCase());\nconst worksOn = d => {\n  const own = rows(1).filter(r => clean(r[6]).toLowerCase() === d.id);\n  const pool = own.length ? own : clinicHours;\n  return DAYS.filter(day => pool.some(r => clean(r[0]).toLowerCase() === day && !isClosed(r))).map(day => day[0].toUpperCase() + day.slice(1, 3));\n};\n\nconst topics = [], faqAll = [];\nfor (const r of faqRows) {\n  const topic = clean(r[0]);\n  if (!topic || off(r[5]) || topic.startsWith('#')) continue;       // a row starting with # is a note\n  const ans = { en: clean(r[2]), ar: clean(r[3]), ur: clean(r[4]) };\n  if (!ans.en && !ans.ar && !ans.ur) continue;\n  topics.push(topic);\n  faqAll.push({ topic, question: clean(r[1]), ans });\n}\n\nif (c.view === 'prompt') {\n  // The approved answers go straight into the instructions when they are short enough.\n  const one = v => clean(v).replace(/\\s+/g, ' ');\n  const answers = faqAll.map(f => `- ${f.topic}` + (f.question ? ` (${one(f.question)})` : '') + ': ' +\n    [f.ans.en && `EN: ${one(f.ans.en)}`, f.ans.ar && `AR: ${one(f.ans.ar)}`, f.ans.ur && `UR: ${one(f.ans.ur)}`].filter(Boolean).join(' | '));\n  const faqInline = faqAll.length > 0 && answers.join('\\n').length <= FAQ_INLINE_CHARS;\n  const faqLines = !faqAll.length ? ['FAQ ANSWERS ON FILE: none']\n    : faqInline ? ['FAQ ANSWERS ON FILE (approved by the clinic):', ...answers]\n    : [`FAQ TOPICS ON FILE (call get_faq for the answers): ${topics.join(', ')}`];\n  const promptBlock = [\n    `CLINIC: ${clinic.name} | Address: ${clinic.address} | Phone: ${clinic.phone}` +\n      (clinic.mapUrl ? ` | Map link: ${clinic.mapUrl}` : ' | Map link: none on file'),\n    ...(clean(set.clinic_name_ar) || clean(set.clinic_name_ur)\n      ? [`Clinic name in Arabic: ${clean(set.clinic_name_ar) || '-'} | in Urdu: ${clean(set.clinic_name_ur) || '-'}`] : []),\n    `DEFAULT LANGUAGE: ${defaultLanguage}`,\n    `Prices are in ${currency}.`,\n    '',\n    'TREATMENTS: id = English name | Arabic name | Urdu name · length · price',\n    ...services.map(s => `${s.id} = ${s.en} | ${s.ar || '-'} | ${s.ur || '-'} · ${s.minutes} min` +\n                         (s.price ? ` · ${s.price.toLocaleString('en-US')}` : '') +\n                         (s.spec && specIds.has(s.spec) && dentists.length ? ` · ${s.spec}` : '')),\n    '',\n    `OPENING HOURS (the clinic in general, 24-hour clock): ${hoursLine || 'not on file'}`,\n    '',\n    ...(dentists.length\n      ? ['DENTISTS: id = name · specializations · treatments they do · days they work',\n         ...dentists.map(d => `${d.id} = ${d.name} · ${d.specs.length ? d.specs.join(', ') : 'none listed'} · ` +\n            `${!d.services || d.services === 'all' ? 'all treatments' : services.filter(s => does(d, s.id)).map(s => s.id).join(', ') || 'none'} · ` +\n            `${worksOn(d).join(' ') || 'no days on file'}`)]\n      : ['DENTISTS: one dentist only. Do not mention a dentist\\'s name, do not ask which dentist, and always use doctor \"any\".']),\n    ...(specs.length && dentists.length\n      ? ['', 'SPECIALIZATIONS: id = English name | Arabic name | Urdu name',\n         ...specs.map(s => `${s.id} = ${s.en} | ${s.ar || '-'} | ${s.ur || '-'}`)] : []),\n    '',\n    ...faqLines\n  ].join('\\n');\n  return [{ json: { ok: true, promptBlock, treatments: services.length, topics: topics.length, faqTab: faqOk,\n                    faqInline, dentists: dentists.length, specializations: specs.length } }];\n}\n\n// ---- view=faq ---------------------------------------------------------------\nconst L = c.lang === 'ar' ? 'ar' : c.lang === 'ur' ? 'ur' : 'en';   // Roman Urdu reads the English answer and rewords it\nconst openingHours = rows(1).filter(r => clean(r[0]) && !clean(r[6])).map(r => {\n  const closed = clean(r[5]).toUpperCase() === 'TRUE' || !clean(r[1]) || !clean(r[2]);\n  return closed ? { day: clean(r[0]), closed: true }\n    : { day: clean(r[0]), open: clean(r[1]), close: clean(r[2]),\n        ...(clean(r[3]) && clean(r[4]) ? { break: `${clean(r[3])}-${clean(r[4])}` } : {}) };\n});\nreturn [{ json: {\n  ok: true, language: c.lang, clinic, currency,\n  openingHours,\n  treatments: services.map(s => ({ id: s.id, name: s[L] || s.en, minutes: s.minutes, price: s.price })),\n  faq: faqAll.map(f => ({ topic: f.topic, question: f.question, answer: f.ans[L] || f.ans.en || f.ans.ar || f.ans.ur,\n                          ...(f.ans[L] ? {} : { answerIsIn: f.ans.en ? 'en' : f.ans.ar ? 'ar' : 'ur' }) })),\n  ...(faqOk ? {} : { faqNote: 'The FAQ tab could not be read (run the stage 1 sheet upgrade). Only the clinic details, hours and prices here are available.' }),\n  rules: 'Answer only from this data, in the patient\\'s language. openingHours are the clinic\\'s general hours in 24-hour time; ' +\n         'each dentist may work fewer days. If the answer is not here, say you will check with the team. Never guess.'\n} }];\n"
+      },
+      "id": "info-build",
+      "name": "Build Answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        630,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "info-return",
+      "name": "Return Info",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $('Config').first().json.SHEET_ID }}/values:batchGet?ranges=Specializations!A2:E&ranges=Doctors!G2:G&ranges=Services!H2:H&majorDimension=ROWS",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "info-read-spec",
+      "name": "Read Specializations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    }
+  ],
+  "connections": {
+    "Info Request": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Read Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Sheet": {
+      "main": [
+        [
+          {
+            "node": "Read FAQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read FAQ": {
+      "main": [
+        [
+          {
+            "node": "Read Specializations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Answer": {
+      "main": [
+        [
+          {
+            "node": "Return Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Specializations": {
+      "main": [
+        [
+          {
+            "node": "Build Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "tags": [
+    {
+      "name": "DentalFlow"
+    }
+  ],
+  "meta": {
+    "instanceId": "dentalflow"
+  }
+}

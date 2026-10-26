@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "crons": [
+    {
+      "path": "/api/cron/release-expired-holds",
+      "schedule": "*/10 * * * *"
+    }
+  ]
+}

@@ -2,8 +2,8 @@
  * THE CLINIC'S OWN DETAILS, shown on the website.
  *
  * Edit this file for each clinic. The chat assistant does not read it: it
- * reads the clinic's Google Sheet (Settings, Services, Doctors, FAQ tabs) like
- * the WhatsApp assistant does, so keep the two in step. Prices and dentists
+ * reads the clinic's Google Sheet (Settings, Services, Doctors, FAQ tabs),
+ * so keep the two in step. Prices and dentists
  * here are what visitors see before they open the chat.
  *
  * Every text has three versions: en (English), ur (Urdu), ar (Arabic).
@@ -20,8 +20,6 @@ export const clinic = {
   name: { en: 'Smile Dental Clinic', ur: 'سمائل ڈینٹل کلینک', ar: 'عيادة سمايل لطب الأسنان' } as T,
   city: { en: 'Lahore', ur: 'لاہور', ar: 'لاهور' } as T,
   phone: '+923197010562',
-  /** Digits only, with country code. Empty = no WhatsApp button. */
-  whatsapp: '',
   email: 'hello@example.com',
   address: { en: '12 Main Boulevard, Lahore', ur: '12 مین بلیوارڈ، لاہور', ar: '12 مين بوليفارد، لاهور' } as T,
   mapUrl: 'https://maps.google.com/?q=12+Main+Boulevard+Lahore',

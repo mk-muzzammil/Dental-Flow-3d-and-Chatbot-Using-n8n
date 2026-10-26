@@ -1,5 +1,5 @@
 /**
- * DEMO MODE: a scripted conversation used while N8N_WEB_CHAT_URL is empty,
+ * DEMO MODE: a scripted conversation used when APP_MODE is demo,
  * so the website can be shown before it is connected to the clinic. It
  * walks through the same steps as the real assistant (treatment, times,
  * details, confirm) and books nothing.
@@ -15,10 +15,10 @@ const S = {
     treatments: 'Treatments', times: 'Free times',
     timesFor: 'Here are the next free times for *{service}*{dentist}. Tap the one that suits you:',
     withDentist: ' with {name}',
-    details: '*{slot}* — lovely. To hold it, please send the patient’s *full name*, *WhatsApp number* and *email* in one message.',
+    details: '*{slot}* — lovely. To hold it, please send the patient’s *full name*, *mobile number* and *email* in one message.',
     check: 'Please check your booking:', treatment: 'Treatment', when: 'When', patient: 'Patient',
     confirm: 'Confirm', change: 'Change',
-    done: 'You’re booked! Your confirmation is on its way by email and WhatsApp. (Demo: nothing was really booked.)',
+    done: 'You’re booked! Your confirmation is on its way by email. (Demo: nothing was really booked.)',
     hours: '*Opening hours*', closed: 'Closed', find: 'You’ll find us at {address}.',
     talk: 'You can call the clinic on *{phone}*. Shall I book you an appointment instead?',
     book: 'Book appointment',
@@ -31,10 +31,10 @@ const S = {
     treatments: 'علاج', times: 'دستیاب اوقات',
     timesFor: '*{service}*{dentist} کے لیے اگلے دستیاب اوقات یہ ہیں۔ جو وقت مناسب ہو اس پر ٹیپ کریں:',
     withDentist: ' ({name} کے ساتھ)',
-    details: '*{slot}* بہت خوب۔ یہ وقت محفوظ کرنے کے لیے مریض کا *پورا نام*، *واٹس ایپ نمبر* اور *ای میل* ایک ہی پیغام میں بھیج دیں۔',
+    details: '*{slot}* بہت خوب۔ یہ وقت محفوظ کرنے کے لیے مریض کا *پورا نام*، *موبائل نمبر* اور *ای میل* ایک ہی پیغام میں بھیج دیں۔',
     check: 'براہِ کرم اپنی بکنگ چیک کر لیں:', treatment: 'علاج', when: 'وقت', patient: 'مریض',
     confirm: 'کنفرم کریں', change: 'تبدیل کریں',
-    done: 'آپ کی بکنگ ہو گئی! کنفرمیشن ای میل اور واٹس ایپ پر بھیجی جا رہی ہے۔ (ڈیمو: اصل میں کوئی بکنگ نہیں ہوئی۔)',
+    done: 'آپ کی بکنگ ہو گئی! کنفرمیشن ای میل پر بھیجی جا رہی ہے۔ (ڈیمو: اصل میں کوئی بکنگ نہیں ہوئی۔)',
     hours: '*کلینک کے اوقات*', closed: 'بند', find: 'ہمارا پتہ: {address}',
     talk: 'آپ کلینک کو اس نمبر پر کال کر سکتے ہیں: *{phone}*۔ کیا میں آپ کی اپائنٹمنٹ بک کر دوں؟',
     book: 'اپائنٹمنٹ بک کریں',
@@ -47,10 +47,10 @@ const S = {
     treatments: 'العلاجات', times: 'المواعيد المتاحة',
     timesFor: 'هذه أقرب المواعيد المتاحة لـ *{service}*{dentist}. يرجى اختيار الموعد المناسب:',
     withDentist: ' مع {name}',
-    details: '*{slot}* اختيار موفق. لتثبيت الموعد، يرجى إرسال *الاسم الكامل* للمريض و*رقم واتساب* و*البريد الإلكتروني* في رسالة واحدة.',
+    details: '*{slot}* اختيار موفق. لتثبيت الموعد، يرجى إرسال *الاسم الكامل* للمريض و*رقم الجوال* و*البريد الإلكتروني* في رسالة واحدة.',
     check: 'يرجى مراجعة تفاصيل الحجز:', treatment: 'العلاج', when: 'الموعد', patient: 'المريض',
     confirm: 'تأكيد', change: 'تعديل',
-    done: 'تم الحجز! يصل التأكيد بالبريد الإلكتروني وعلى واتساب. (وضع تجريبي: لم يتم أي حجز فعلي.)',
+    done: 'تم الحجز! يصل التأكيد بالبريد الإلكتروني. (وضع تجريبي: لم يتم أي حجز فعلي.)',
     hours: '*ساعات العمل*', closed: 'مغلق', find: 'العنوان: {address}',
     talk: 'يمكن الاتصال بالعيادة على الرقم *{phone}*. هل أحجز لك موعداً بدلاً من ذلك؟',
     book: 'حجز موعد',
@@ -104,7 +104,7 @@ export function demoReply(req: ChatRequest): ChatResponse {
   const st: DemoState = req.demoState && typeof req.demoState === 'object' ? req.demoState : { step: 'start' };
   const starters = t.chat.starters;
 
-  // A voice message: understood only once the site is connected to n8n
+  // A voice message: understood only once the site is in live mode
   if (req.audio) return { ...base(lang, st), reply: s.voice, heard: '' };
 
   // The booking panel: the visitor already chose everything and confirmed
@@ -113,7 +113,7 @@ export function demoReply(req: ChatRequest): ChatResponse {
     const when = `${field('Date').replace(/^\S+\s*\(|\)$/g, '')} · ${field('Time').replace(/^\S+\s*\(|\)$/g, '')}`;
     return { ...base(lang, { step: 'start' }), reply: s.formDone,
       booking: { reference: 'DEMO-' + Math.random().toString(36).slice(2, 6).toUpperCase(), when, service: field('Treatment'),
-        dentist: field('Dentist'), whatsappSent: true, emailCopy: true } };
+        dentist: field('Dentist'), whatsappSent: false, emailCopy: true } };
   }
 
   // Questions that can come at any point
@@ -166,7 +166,7 @@ export function demoReply(req: ChatRequest): ChatResponse {
       const [when, dentist = ''] = String(st.slot ?? '').split(' — ');
       const ref = 'DEMO-' + Math.random().toString(36).slice(2, 6).toUpperCase();
       return { ...base(lang, { step: 'start' }), reply: s.done,
-        booking: { reference: ref, when, service: sv?.name[lang] ?? '', dentist, whatsappSent: true, emailCopy: true } };
+        booking: { reference: ref, when, service: sv?.name[lang] ?? '', dentist, whatsappSent: false, emailCopy: true } };
     }
     default: {
       const sv = findService(msg);

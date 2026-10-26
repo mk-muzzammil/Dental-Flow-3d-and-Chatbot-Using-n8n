@@ -1,20 +1,15 @@
-/**
- * POST /api/chat — the chat window talks to this route, and this route talks
- * to n8n (workflow 17). The secret key for n8n stays here on the server; the
- * visitor's browser never sees it or the n8n address.
- *
- * Without N8N_WEB_CHAT_URL the route answers in demo mode (nothing is booked).
- */
 import { NextResponse, type NextRequest } from 'next/server';
 import { cleanResponse, type ChatRequest, type DemoState, type HistoryItem } from '@/lib/chat-types';
 import { demoReply } from '@/lib/demo';
+import { chat } from '@/lib/server/chat';
+import { appMode, deadline, safeError } from '@/lib/server/config';
+import { readJson } from '@/lib/server/http';
+import { randomUUID } from 'node:crypto';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const N8N_URL = process.env.N8N_WEB_CHAT_URL?.trim() ?? '';
-const N8N_KEY = process.env.N8N_WEB_CHAT_KEY?.trim() ?? '';
-const TIMEOUT_MS = 45_000;
+export const maxDuration = 180;
 const MAX_BODY = 40_000;
 const MAX_VOICE_BODY = 2_600_000;   // a voice message: about 50 seconds of 16 kHz WAV, as base64
 
@@ -32,21 +27,6 @@ function limited(ip: string) {
 }
 
 const fail = (status: number, error: string) => NextResponse.json({ ok: false, error }, { status });
-
-/* While you run the site on your own computer (npm run dev), a failed reply says why, in plain words,
-   in the chat and in the terminal. On the live site visitors only see "couldn't reach the clinic". */
-const DEV = process.env.NODE_ENV !== 'production';
-function upstreamFail(status: number, error: string, why: string) {
-  console.error(`[chat] ${why}`);
-  return NextResponse.json({ ok: false, error, ...(DEV ? { detail: why } : {}) }, { status });
-}
-function explainStatus(code: number, body: string) {
-  const said = body ? ` n8n said: ${body.replace(/\s+/g, ' ').slice(0, 200)}` : '';
-  if (code === 401 || code === 403) return `n8n refused the key (HTTP ${code}). N8N_WEB_CHAT_KEY in .env.local must be exactly the value of the "DentalFlow web key" credential, and the Chat Request node in workflow 17 must use that credential.${said}`;
-  if (code === 404) return `n8n has no webhook at ${N8N_URL} (HTTP 404). Publish workflow 17 in n8n, and check the address ends in /webhook/web-chat (not /webhook-test/).${said}`;
-  if (code >= 500) return `Workflow 17 stopped with an error (HTTP ${code}). Open workflow 17 > Executions in n8n and look at the red node.${said}`;
-  return `n8n answered HTTP ${code}.${said}`;
-}
 
 function parse(raw: unknown): ChatRequest | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -78,7 +58,7 @@ function parse(raw: unknown): ChatRequest | null {
 
 /** GET /api/chat: is the chat connected to the clinic, or in demo mode? (The chat window asks when it opens.) */
 export function GET() {
-  return NextResponse.json({ demo: !N8N_URL });
+  return NextResponse.json({ demo: appMode() === 'demo' });
 }
 
 export async function POST(req: NextRequest) {
@@ -92,41 +72,22 @@ export async function POST(req: NextRequest) {
   const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || req.headers.get('x-real-ip') || 'local';
   if (limited(ip)) return fail(429, 'too_many_messages');
 
-  const text = await req.text();
-  if (text.length > MAX_VOICE_BODY || (text.length > MAX_BODY && !text.includes('"audio"'))) return fail(413, 'too_large');
   let body: ChatRequest | null = null;
-  try { body = parse(JSON.parse(text)); } catch { body = null; }
+  try { const raw = await readJson(req, MAX_VOICE_BODY); if (!raw.audio && JSON.stringify(raw).length > MAX_BODY) return fail(413, 'too_large'); body = parse(raw); } catch (error) { const detail = safeError(error); return fail(detail.status, detail.code); }
   if (!body) return fail(400, 'bad_request');
 
-  if (!N8N_URL) {
+  if (appMode() === 'demo') {
     await new Promise(r => setTimeout(r, 700 + Math.random() * 600)); // feels like a real reply
     return NextResponse.json(demoReply(body));
   }
 
   try {
-    const res = await fetch(N8N_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-DentalFlow-Web-Key': N8N_KEY, 'ngrok-skip-browser-warning': '1' },
-      body: JSON.stringify({ sessionId: body.sessionId, message: body.message, history: body.history, lang: body.lang, ...(body.audio ? { audio: body.audio } : {}) }),
-      signal: AbortSignal.timeout(body.audio ? TIMEOUT_MS + 15_000 : TIMEOUT_MS),   // listening to a voice message takes a few seconds more
-      cache: 'no-store',
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      return upstreamFail(502, 'upstream', explainStatus(res.status, text));
-    }
-    const raw = await res.text();
-    let json: unknown = null;
-    try { json = JSON.parse(raw); } catch { /* not JSON */ }
-    if (json === null) return upstreamFail(502, 'empty', `n8n answered, but not with the chat's JSON. Check the Respond Chat node in workflow 17. It sent: ${raw.slice(0, 200) || '(nothing)'}`);
-    const data = cleanResponse(json);
-    if (!data.reply && !data.carousel && !data.booking) return upstreamFail(502, 'empty', 'Workflow 17 answered without a reply. Open its Executions in n8n and check the Web Agent and Prepare Reply nodes (often the Gemini credential).');
-    return NextResponse.json(data);
-  } catch (e) {
-    const err = e as Error & { cause?: { code?: string } };
-    if (err?.name === 'TimeoutError') return upstreamFail(504, 'timeout', `n8n did not answer within ${TIMEOUT_MS / 1000} seconds. Open workflow 17 > Executions in n8n to see where it is stuck.`);
-    const code = err?.cause?.code || err?.name || 'error';
-    const hint = /localhost/.test(N8N_URL) ? ' If n8n is running, try 127.0.0.1 instead of localhost in N8N_WEB_CHAT_URL.' : ' Is n8n (and ngrok) running?';
-    return upstreamFail(504, 'unreachable', `Cannot reach n8n at ${N8N_URL} (${code}). Start n8n with start-dentalflow.bat.${hint}`);
+    const key = req.headers.get('idempotency-key') || randomUUID();
+    if (!/^[\w-]{16,120}$/.test(key)) return fail(400, 'bad_idempotency_key');
+    const data = await chat(body, `${body.sessionId}:${key}`, deadline(180_000, req.signal));
+    return NextResponse.json(cleanResponse(data));
+  } catch (error) {
+    const detail = safeError(error);
+    return fail(detail.status, detail.code);
   }
 }

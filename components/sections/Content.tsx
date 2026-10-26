@@ -96,7 +96,6 @@ export function How({ t }: { t: Dict }) {
 }
 
 export function Visit({ lang, t }: { lang: Lang; t: Dict }) {
-  const wa = clinic.whatsapp.replace(/\D/g, '');
   return (
     <section id="visit" className="mx-auto max-w-6xl scroll-mt-24 px-5 pb-24 sm:pb-32">
       <Head n="04" eyebrow={t.visit.eyebrow} title={t.visit.title} />
@@ -115,11 +114,7 @@ export function Visit({ lang, t }: { lang: Lang; t: Dict }) {
             <a href={`tel:${clinic.phone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-2 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-deep">
               {t.visit.call} <span dir="ltr" className="font-normal opacity-75">{clinic.phone}</span>
             </a>
-            {wa.length >= 8 && (
-              <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center rounded-full px-5 py-3 text-sm font-semibold text-ink ring-1 ring-line transition hover:bg-mist">
-                {t.visit.whatsapp}
-              </a>
-            )}
+
           </div>
         </Reveal>
         <Reveal delay={0.08} className="relative min-h-[340px] overflow-hidden rounded-[1.75rem] bg-brand-deep ring-1 ring-line">

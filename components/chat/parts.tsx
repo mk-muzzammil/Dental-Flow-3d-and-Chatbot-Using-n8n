@@ -166,7 +166,7 @@ export function BookingCard({ b, t, demo }: { b: Booking; t: Dict['chat']; demo?
         </div>
       </dl>
       <p className="border-t border-line/70 px-4 py-2.5 text-xs text-ink-soft">
-        {b.whatsappSent ? t.sentBoth : b.emailCopy ? t.sentEmail : ''}
+        {b.emailCopy ? t.sentEmail : t.emailFailed}
         {demo && <span className="ms-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">{t.demoBadge}</span>}
       </p>
     </motion.div>

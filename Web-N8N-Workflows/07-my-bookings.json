@@ -1,0 +1,151 @@
+{
+  "name": "DentalFlow · 07 My Bookings (lookup by phone)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "my-bookings",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        },
+        "authentication": "headerAuth"
+      },
+      "id": "lookup-request",
+      "name": "Lookup Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        300
+      ],
+      "webhookId": "my-bookings-hook"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n/* ==========================================================================\n   >>> EDIT THESE <<<\n   ========================================================================== */\nconst SHEET_ID    = '1N-qE4v81o0uxyXxLFeCamHSkvALFQIixrES3K6-hE6c';\nconst PUBLIC_BASE = 'https://condone-making-amount.ngrok-free.dev';      // n8n, for cancel links\nconst BOOKING_URL = 'http://localhost:3000';      // the booking page\nconst CLINIC_NAME = 'Smile Dental Clinic';\nconst TIMEZONE    = 'Asia/Karachi';\nconst PHONE_MATCH_DIGITS = 10;   // compare the last N digits (10 suits PK/IN/UAE/UK)\n/* ========================================================================== */\n\nconst q = $input.first().json.query || {};\nconst raw = String(q.phone || '').trim();\nif (!raw) throw new Error('Missing \"phone\"');\n\n// WhatsApp gives 923001234567; a patient may have typed 0300 1234567 or\n// +92 300 1234567. Comparing the last N digits makes all of those match\n// without us having to guess the country code.\nconst tail = s => String(s||'').replace(/\\D/g,'').slice(-PHONE_MATCH_DIGITS);\nconst key = tail(raw);\nif (key.length < PHONE_MATCH_DIGITS) throw new Error('Phone number too short');\n\nreturn [{ json: { SHEET_ID, PUBLIC_BASE, BOOKING_URL, CLINIC_NAME, TIMEZONE,\n  PHONE_MATCH_DIGITS, phone: raw, key,\n  scope: String(q.scope || 'upcoming').toLowerCase() } }];\n"
+      },
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -210,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.SHEET_ID }}/values/Appointments!A2:U",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "id": "read-appointments",
+      "name": "Read Appointments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// --- shared helpers -------------------------------------------------------\nconst toMin  = t => { const [h,m] = String(t).split(':').map(Number); return h*60 + (m||0); };\nconst toHHMM = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;\nconst parts  = (isoStr, tz) => {\n  const f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit',\n    day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });\n  const p = Object.fromEntries(f.formatToParts(new Date(isoStr)).map(x => [x.type, x.value]));\n  return { date: `${p.year}-${p.month}-${p.day}`, min: (Number(p.hour) % 24) * 60 + Number(p.minute) };\n};\nconst prettyDate = (d, tz) => new Date(d + 'T12:00:00Z')\n  .toLocaleDateString('en-GB', { timeZone: tz, weekday:'long', day:'numeric', month:'long', year:'numeric' });\nconst pretty12 = t => { const [h,m] = String(t).split(':').map(Number);\n  return `${((h+11)%12)+1}:${String(m).padStart(2,'0')} ${h>=12?'PM':'AM'}`; };\nconst busyBlocks = (fb, calId, day, tz) => {\n  const cal = fb.calendars || {};\n  const raw = (cal[calId] && cal[calId].busy) || (Object.values(cal)[0] || {}).busy || [];\n  const out = [];\n  for (const b of raw) {\n    const s = parts(b.start, tz), e = parts(b.end, tz);\n    if (e.date < day || s.date > day) continue;\n    out.push([ s.date < day ? 0 : s.min, e.date > day ? 1440 : e.min ]);\n  }\n  return out;\n};\n// --------------------------------------------------------------------------\n\nconst c    = $('Config').first().json;\nconst rows = ($input.first().json.values) || [];\nconst tail = s => String(s||'').replace(/\\D/g,'').slice(-c.PHONE_MATCH_DIGITS);\n\nconst off = (() => {\n  const s = new Intl.DateTimeFormat('en-US', { timeZone: c.TIMEZONE, timeZoneName: 'longOffset' })\n    .formatToParts(new Date()).find(x => x.type === 'timeZoneName').value.replace('GMT','');\n  return s || '+00:00';\n})();\nconst now = Date.now();\n\nconst mine = [];\nfor (const r of rows) {\n  if (tail(r[9]) !== c.key) continue;                 // column J = phone\n  const status = String(r[2] || '').toUpperCase();\n  if (status === 'EXPIRED') continue;                 // never happened, don't show it\n  const when = Date.parse(`${r[5]}T${r[6]}:00${off}`);\n  const upcoming = when > now - 3600000;\n  if (c.scope === 'upcoming' && !upcoming) continue;\n  if (c.scope === 'past' && upcoming) continue;\n\n  mine.push({\n    reference: r[0], status,\n    service: r[4], date: r[5], time: r[6],\n    when: `${prettyDate(r[5], c.TIMEZONE)} at ${pretty12(r[6])}`,\n    durationMin: Number(r[7]) || null,\n    name: r[8], price: r[16] || null,\n    doctor: String(r[18] || '').trim(), doctorName: String(r[19] || '').trim(),\n    upcoming,\n    // Safe to hand over: we already proved this phone owns the booking, and the\n    // link still shows an \"are you sure\" page before anything is deleted.\n    cancelLink: (status === 'PENDING' || status === 'CONFIRMED')\n      ? `${c.PUBLIC_BASE}/webhook/booking-action?ref=${encodeURIComponent(r[0])}&token=${encodeURIComponent(r[13])}&action=cancel`\n      : null,\n    confirmLink: status === 'PENDING'\n      ? `${c.PUBLIC_BASE}/webhook/booking-action?ref=${encodeURIComponent(r[0])}&token=${encodeURIComponent(r[13])}&action=confirm`\n      : null\n  });\n}\nmine.sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));\n\nreturn [{ json: { phone: c.phone, count: mine.length, bookings: mine,\n  message: mine.length ? null : 'No appointments found for this number.' } }];\n"
+      },
+      "id": "filter-by-phone",
+      "name": "Filter By Phone",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        210,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "return-bookings",
+      "name": "Return Bookings",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        420,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Lookup Request": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Read Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Appointments": {
+      "main": [
+        [
+          {
+            "node": "Filter By Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter By Phone": {
+      "main": [
+        [
+          {
+            "node": "Return Bookings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "tags": [
+    {
+      "name": "DentalFlow"
+    }
+  ],
+  "meta": {
+    "instanceId": "dentalflow"
+  }
+}

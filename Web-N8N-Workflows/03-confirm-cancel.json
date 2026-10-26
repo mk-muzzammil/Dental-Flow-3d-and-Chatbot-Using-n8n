@@ -1,0 +1,540 @@
+{
+  "name": "DentalFlow · 03 Confirm or Cancel",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "booking-action",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "patient-clicks-link",
+      "name": "Patient Clicks Link",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -760,
+        300
+      ],
+      "webhookId": "booking-action-hook"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n/* ==========================================================================\n   >>> EDIT THESE <<<\n   ========================================================================== */\nconst CALENDAR_ID    = 'primary';\nconst SHEET_ID       = '1N-qE4v81o0uxyXxLFeCamHSkvALFQIixrES3K6-hE6c';\nconst PUBLIC_BASE    = 'https://condone-making-amount.ngrok-free.dev';\nconst CLINIC_NAME    = 'Smile Dental Clinic';\nconst CLINIC_ADDRESS = '12 Main Boulevard, Lahore';\nconst CLINIC_PHONE   = '+92 300 000 0000';\nconst TIMEZONE       = 'Asia/Karachi';\nconst BOOKING_URL    = 'http://localhost:3000';   // where patients BOOK (not n8n)\nconst CLINIC_WHATSAPP = '15551915007';   // the clinic's WhatsApp number, digits only with country code, e.g. 923001234567.\n                               // Email buttons open this chat with the message ready. '' = buttons work as before.\nconst CANCEL_CUTOFF_HOURS = 4;                    // no self-service cancel inside this window\n/* ========================================================================== */\n\nconst q = $input.first().json.query || {};\nconst action = String(q.action || 'confirm').toLowerCase();\nif (!['confirm', 'cancel'].includes(action)) throw new Error('Unknown action');\nif (!q.ref || !q.token) throw new Error('Missing ref or token');\n// A cancel only goes through when it carries do=1, which only the \"Yes, cancel it\"\n// button adds. A bare cancel link (or an email scanner that pre-fetches links)\n// lands on a confirmation page instead of destroying the booking.\nconst doIt = String(q.do || '') === '1';\nreturn [{ json: { CALENDAR_ID, SHEET_ID, PUBLIC_BASE, CLINIC_NAME, CLINIC_ADDRESS,\n  CLINIC_PHONE, TIMEZONE, BOOKING_URL, CLINIC_WHATSAPP, CANCEL_CUTOFF_HOURS, doIt,\n  action, ref: String(q.ref).trim(), token: String(q.token).trim() } }];\n"
+      },
+      "id": "parse-link",
+      "name": "Parse Link",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.SHEET_ID }}/values/Appointments!A2:U",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "id": "read-appointments",
+      "name": "Read Appointments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -360,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// --- shared helpers -------------------------------------------------------\nconst toMin  = t => { const [h,m] = String(t).split(':').map(Number); return h*60 + (m||0); };\nconst toHHMM = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;\nconst parts  = (isoStr, tz) => {\n  const f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit',\n    day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });\n  const p = Object.fromEntries(f.formatToParts(new Date(isoStr)).map(x => [x.type, x.value]));\n  return { date: `${p.year}-${p.month}-${p.day}`, min: (Number(p.hour) % 24) * 60 + Number(p.minute) };\n};\nconst prettyDate = (d, tz) => new Date(d + 'T12:00:00Z')\n  .toLocaleDateString('en-GB', { timeZone: tz, weekday:'long', day:'numeric', month:'long', year:'numeric' });\nconst pretty12 = t => { const [h,m] = String(t).split(':').map(Number);\n  return `${((h+11)%12)+1}:${String(m).padStart(2,'0')} ${h>=12?'PM':'AM'}`; };\nconst busyBlocks = (fb, calId, day, tz) => {\n  const cal = fb.calendars || {};\n  const raw = (cal[calId] && cal[calId].busy) || (Object.values(cal)[0] || {}).busy || [];\n  const out = [];\n  for (const b of raw) {\n    const s = parts(b.start, tz), e = parts(b.end, tz);\n    if (e.date < day || s.date > day) continue;\n    out.push([ s.date < day ? 0 : s.min, e.date > day ? 1440 : e.min ]);\n  }\n  return out;\n};\n// --------------------------------------------------------------------------\n\nconst p    = $('Parse Link').first().json;\nconst rows = ($input.first().json.values) || [];\nconst bad  = (reason, appt) => [{ json: { ...p, ok: false, reason, appt: appt || null } }];\n\n// A row is identified by reference AND token together. References are short\n// and can repeat; matching on the reference alone acts on the first row that\n// shares it, which can be a different patient's booking.\nlet idx = -1, refSeen = false;\nfor (let i = 0; i < rows.length; i++) {\n  if (String(rows[i][0] || '').trim() !== p.ref) continue;\n  refSeen = true;\n  if (String(rows[i][13] || '').trim() === p.token) { idx = i; break; }\n}\nif (idx < 0) return bad(refSeen ? 'bad-token' : 'not-found');\n\nconst r = rows[idx];\n\nconst appt = { ref:r[0], serviceName:r[4], date:r[5], time:r[6], duration:Number(r[7]) || 30,\n               name:r[8], phone:r[9], email:r[10], eventId:r[12], price:r[16],\n               doctorName: String(r[19] || '').trim(),\n               calendarId: String(r[20] || '').trim() || p.CALENDAR_ID };   // each doctor has their own calendar\nconst status = String(r[2] || '').toUpperCase();\nif (status === 'CANCELLED') return bad('cancelled', appt);\nif (status === 'EXPIRED')   return bad('expired', appt);\nif (status === 'CONFIRMED' && p.action === 'confirm') return bad('already-confirmed', appt);\n\n// ---- how long until the appointment, in clinic time ----\nconst off = (() => {\n  const s = new Intl.DateTimeFormat('en-US', { timeZone: p.TIMEZONE, timeZoneName: 'longOffset' })\n    .formatToParts(new Date()).find(x => x.type === 'timeZoneName').value.replace('GMT', '');\n  return s || '+00:00';\n})();\nconst when = Date.parse(`${appt.date}T${appt.time}:00${off}`);\nconst hrs  = when ? (when - Date.now()) / 3600000 : 999;\n\n// An appointment that has already happened can't be confirmed or cancelled —\n// otherwise a stale link in an old email corrupts the clinic's numbers.\nif (hrs < -1) return bad('past', appt);\n\n// Too close to the appointment: the clinic can no longer refill the slot, so\n// make the patient phone instead of silently dropping it.\nif (p.action === 'cancel' && hrs < Number(p.CANCEL_CUTOFF_HOURS || 0))\n  return bad('too-late', appt);\n\n// Ask before destroying anything. Routed through the error branch so the\n// workflow shape is unchanged.\nif (p.action === 'cancel' && !p.doIt) return bad('confirm-cancel', appt);\n\nreturn [{ json: { ...p, ok: true, isConfirm: p.action === 'confirm', rowNumber: idx + 2, appt,\n  prettyDate: prettyDate(appt.date, p.TIMEZONE), prettyTime: pretty12(appt.time) } }];\n"
+      },
+      "id": "verify-booking",
+      "name": "Verify Booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ok",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "link-valid?",
+      "name": "Link Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        40,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "isc",
+              "leftValue": "={{ $json.isConfirm }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "confirm-or-cancel?",
+      "name": "Confirm or Cancel?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        250,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{ encodeURIComponent($json.appt.calendarId || $json.CALENDAR_ID) }}/events/{{ $json.appt.eventId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ summary: '[CONFIRMED] ' + $json.appt.name + ' — ' + $json.appt.serviceName, colorId: '10', extendedProperties: { private: { ref: $json.ref, token: $json.token, status: 'CONFIRMED' } } }) }}"
+      },
+      "id": "turn-hold-into-booking",
+      "name": "Turn Hold Into Booking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        470,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst page = (tone, title, body, extra) => {\n  const bar = { good:'#047857', warn:'#B45309', bad:'#B91C1C' }[tone];\n  return `<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>${title}</title>\n<link href=\"https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap\" rel=\"stylesheet\">\n<style>body{font-family:'Atkinson Hyperlegible',system-ui,sans-serif;background:#F2FBFD;color:#123F52;\nmargin:0;padding:24px;display:flex;align-items:center;justify-content:center;min-height:100vh;line-height:1.55}\n.c{background:#fff;border:1px solid #CDE9F1;border-radius:20px;max-width:520px;width:100%;\nbox-shadow:0 12px 40px -18px rgba(18,63,82,.3);overflow:hidden}\n.h{background:${bar};color:#fff;padding:26px 28px}.h h1{margin:0;font-size:21px}\n.b{padding:28px}.b p{margin:0 0 15px}\ntable{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}\ntd{padding:10px 0;border-top:1px solid #EDF5F8}td:first-child{color:#4A6572}\ntd:last-child{text-align:right;font-weight:700}\n.btn{display:block;text-align:center;background:#0E7490;color:#fff;text-decoration:none;\npadding:14px;border-radius:12px;font-weight:700;margin-top:8px}\n.f{font-size:12px;color:#4A6572;border-top:1px solid #EDF5F8;padding-top:16px;margin-top:22px}</style></head>\n<body><div class=\"c\"><div class=\"h\"><h1>${title}</h1></div><div class=\"b\">${body}\n<div class=\"f\">${extra || ''}</div></div></div></body></html>`;\n};\n\nconst v  = $('Verify Booking').first().json;\nconst ev = $input.first().json;                    // patched Google event\nconst a  = v.appt;\nconst gcal = (() => {\n  try {\n    const s = new Date(ev.start.dateTime), e = new Date(ev.end.dateTime);\n    const z = d => d.toISOString().replace(/[-:]/g, '').replace(/\\.\\d{3}/, '');\n    return 'https://calendar.google.com/calendar/render?action=TEMPLATE'\n      + `&text=${encodeURIComponent(a.serviceName + ' — ' + v.CLINIC_NAME)}`\n      + `&dates=${z(s)}/${z(e)}`\n      + `&location=${encodeURIComponent(v.CLINIC_ADDRESS)}`\n      + `&details=${encodeURIComponent('Reference ' + a.ref + '. Please arrive 10 minutes early.')}`;\n  } catch (err) { return ''; }\n})();\n\nconst rows = `<table>\n<tr><td>Treatment</td><td>${a.serviceName}</td></tr>\n${a.doctorName ? `<tr><td>Dentist</td><td>${a.doctorName}</td></tr>` : ''}\n<tr><td>Date</td><td>${v.prettyDate}</td></tr>\n<tr><td>Time</td><td>${v.prettyTime}</td></tr>\n<tr><td>Duration</td><td>${a.duration} minutes</td></tr>\n<tr><td>Reference</td><td>${a.ref}</td></tr></table>`;\n\n// Buttons open the clinic's WhatsApp chat with the message already typed; the patient just presses send.\nconst waDigits = String(v.CLINIC_WHATSAPP || '').replace(/\\D/g, '');\nconst wa = text => waDigits.length >= 8 ? `https://wa.me/${waDigits}?text=${encodeURIComponent(text)}` : '';\nconst waCancel = wa(`I want to cancel my appointment. Reference: ${a.ref}`);\nconst cancelLink = `${v.PUBLIC_BASE}/webhook/booking-action?ref=${encodeURIComponent(a.ref)}`\n                 + `&token=${encodeURIComponent(v.token)}&action=cancel`;\n\nconst html = page('good', 'Your appointment is confirmed',\n  `<p>Thank you, <strong>${a.name}</strong>. We look forward to seeing you.</p>${rows}\n   ${gcal ? `<a class=\"btn\" href=\"${gcal}\">Add to my calendar</a>` : ''}\n   <p style=\"margin-top:20px;font-size:14px;text-align:center\">\n     <a href=\"${waCancel || cancelLink}\" style=\"color:#4A6572\">${waCancel ? 'Need to change or cancel? Message us on WhatsApp' : 'Need to cancel?'}</a></p>`,\n  `Please arrive 10 minutes early.<br>${v.CLINIC_ADDRESS} &middot; ${v.CLINIC_PHONE}`);\n\nconst email = page('good', 'Appointment confirmed',\n  `<p>Hello <strong>${a.name}</strong>, your appointment at ${v.CLINIC_NAME} is confirmed.</p>${rows}\n   ${gcal ? `<a class=\"btn\" href=\"${gcal}\">Add to my calendar</a>` : ''}\n   <p style=\"margin-top:18px;font-size:14px\">Need to change it?\n   <a href=\"${waCancel || cancelLink}\">${waCancel ? 'Cancel or change on WhatsApp' : 'Cancel this appointment'}</a>.</p>`,\n  `We will send you a reminder 24 hours and 2 hours before.<br>${v.CLINIC_ADDRESS} &middot; ${v.CLINIC_PHONE}`);\n\nreturn [{ json: { ...v, html, email,\n  subject: `Confirmed: ${a.serviceName} on ${v.prettyDate} at ${v.prettyTime}  [Ref: ${a.ref}]` } }];\n"
+      },
+      "id": "build-confirmed-page",
+      "name": "Build Confirmed Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        670,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.SHEET_ID }}/values/Appointments!C{{ $json.rowNumber }}?valueInputOption=USER_ENTERED",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ values: [['CONFIRMED']] }) }}"
+      },
+      "id": "mark-confirmed",
+      "name": "Mark CONFIRMED",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        870,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Build Confirmed Page').first().json.appt.email }}",
+        "subject": "={{ $('Build Confirmed Page').first().json.subject }}",
+        "emailType": "html",
+        "message": "={{ $('Build Confirmed Page').first().json.email }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "email-final-confirmation",
+      "name": "Email Final Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1070,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $('Build Confirmed Page').first().json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "show-confirmed-page",
+      "name": "Show Confirmed Page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1270,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{ encodeURIComponent($json.appt.calendarId || $json.CALENDAR_ID) }}/events/{{ $json.appt.eventId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "options": {},
+        "onError": "continueRegularOutput"
+      },
+      "id": "release-the-slot",
+      "name": "Release The Slot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $('Verify Booking').first().json.SHEET_ID }}/values/Appointments!C{{ $('Verify Booking').first().json.rowNumber }}?valueInputOption=USER_ENTERED",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ values: [['CANCELLED']] }) }}"
+      },
+      "id": "mark-cancelled",
+      "name": "Mark CANCELLED",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        670,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst page = (tone, title, body, extra) => {\n  const bar = { good:'#047857', warn:'#B45309', bad:'#B91C1C' }[tone];\n  return `<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>${title}</title>\n<link href=\"https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap\" rel=\"stylesheet\">\n<style>body{font-family:'Atkinson Hyperlegible',system-ui,sans-serif;background:#F2FBFD;color:#123F52;\nmargin:0;padding:24px;display:flex;align-items:center;justify-content:center;min-height:100vh;line-height:1.55}\n.c{background:#fff;border:1px solid #CDE9F1;border-radius:20px;max-width:520px;width:100%;\nbox-shadow:0 12px 40px -18px rgba(18,63,82,.3);overflow:hidden}\n.h{background:${bar};color:#fff;padding:26px 28px}.h h1{margin:0;font-size:21px}\n.b{padding:28px}.b p{margin:0 0 15px}\ntable{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}\ntd{padding:10px 0;border-top:1px solid #EDF5F8}td:first-child{color:#4A6572}\ntd:last-child{text-align:right;font-weight:700}\n.btn{display:block;text-align:center;background:#0E7490;color:#fff;text-decoration:none;\npadding:14px;border-radius:12px;font-weight:700;margin-top:8px}\n.f{font-size:12px;color:#4A6572;border-top:1px solid #EDF5F8;padding-top:16px;margin-top:22px}</style></head>\n<body><div class=\"c\"><div class=\"h\"><h1>${title}</h1></div><div class=\"b\">${body}\n<div class=\"f\">${extra || ''}</div></div></div></body></html>`;\n};\n\nconst v = $('Verify Booking').first().json, a = v.appt;\n// Buttons open the clinic's WhatsApp chat with the message already typed; the patient just presses send.\nconst waDigits = String(v.CLINIC_WHATSAPP || '').replace(/\\D/g, '');\nconst wa = text => waDigits.length >= 8 ? `https://wa.me/${waDigits}?text=${encodeURIComponent(text)}` : '';\nconst waBook = wa('I would like to book an appointment.');\nconst html = page('warn', 'Appointment cancelled',\n  `<p>Your appointment on <strong>${v.prettyDate} at ${v.prettyTime}</strong> has been cancelled\n   and the slot released for other patients.</p>\n   <p>Changed your mind? You can book again any time.</p>\n   <a class=\"btn\" href=\"${waBook || v.BOOKING_URL}\">${waBook ? 'Book again on WhatsApp' : 'Book a new appointment'}</a>`,\n  `${v.CLINIC_NAME} &middot; ${v.CLINIC_PHONE}`);\nreturn [{ json: { ...v, html } }];\n"
+      },
+      "id": "build-cancelled-page",
+      "name": "Build Cancelled Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        870,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "show-cancelled-page",
+      "name": "Show Cancelled Page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1070,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst page = (tone, title, body, extra) => {\n  const bar = { good:'#047857', warn:'#B45309', bad:'#B91C1C' }[tone];\n  return `<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>${title}</title>\n<link href=\"https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap\" rel=\"stylesheet\">\n<style>body{font-family:'Atkinson Hyperlegible',system-ui,sans-serif;background:#F2FBFD;color:#123F52;\nmargin:0;padding:24px;display:flex;align-items:center;justify-content:center;min-height:100vh;line-height:1.55}\n.c{background:#fff;border:1px solid #CDE9F1;border-radius:20px;max-width:520px;width:100%;\nbox-shadow:0 12px 40px -18px rgba(18,63,82,.3);overflow:hidden}\n.h{background:${bar};color:#fff;padding:26px 28px}.h h1{margin:0;font-size:21px}\n.b{padding:28px}.b p{margin:0 0 15px}\ntable{width:100%;border-collapse:collapse;font-size:14px;margin:18px 0}\ntd{padding:10px 0;border-top:1px solid #EDF5F8}td:first-child{color:#4A6572}\ntd:last-child{text-align:right;font-weight:700}\n.btn{display:block;text-align:center;background:#0E7490;color:#fff;text-decoration:none;\npadding:14px;border-radius:12px;font-weight:700;margin-top:8px}\n.f{font-size:12px;color:#4A6572;border-top:1px solid #EDF5F8;padding-top:16px;margin-top:22px}</style></head>\n<body><div class=\"c\"><div class=\"h\"><h1>${title}</h1></div><div class=\"b\">${body}\n<div class=\"f\">${extra || ''}</div></div></div></body></html>`;\n};\n\n// --- shared helpers -------------------------------------------------------\nconst toMin  = t => { const [h,m] = String(t).split(':').map(Number); return h*60 + (m||0); };\nconst toHHMM = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;\nconst parts  = (isoStr, tz) => {\n  const f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit',\n    day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });\n  const p = Object.fromEntries(f.formatToParts(new Date(isoStr)).map(x => [x.type, x.value]));\n  return { date: `${p.year}-${p.month}-${p.day}`, min: (Number(p.hour) % 24) * 60 + Number(p.minute) };\n};\nconst prettyDate = (d, tz) => new Date(d + 'T12:00:00Z')\n  .toLocaleDateString('en-GB', { timeZone: tz, weekday:'long', day:'numeric', month:'long', year:'numeric' });\nconst pretty12 = t => { const [h,m] = String(t).split(':').map(Number);\n  return `${((h+11)%12)+1}:${String(m).padStart(2,'0')} ${h>=12?'PM':'AM'}`; };\nconst busyBlocks = (fb, calId, day, tz) => {\n  const cal = fb.calendars || {};\n  const raw = (cal[calId] && cal[calId].busy) || (Object.values(cal)[0] || {}).busy || [];\n  const out = [];\n  for (const b of raw) {\n    const s = parts(b.start, tz), e = parts(b.end, tz);\n    if (e.date < day || s.date > day) continue;\n    out.push([ s.date < day ? 0 : s.min, e.date > day ? 1440 : e.min ]);\n  }\n  return out;\n};\n// --------------------------------------------------------------------------\n\nconst v = $('Verify Booking').first().json;\nconst a = v.appt || {};\n// Buttons open the clinic's WhatsApp chat with the message already typed; the patient just presses send.\nconst waDigits = String(v.CLINIC_WHATSAPP || '').replace(/\\D/g, '');\nconst wa = text => waDigits.length >= 8 ? `https://wa.me/${waDigits}?text=${encodeURIComponent(text)}` : '';\nconst waBook = wa('I would like to book an appointment.');\nconst foot = `${v.CLINIC_NAME} &middot; ${v.CLINIC_PHONE}`;\nconst when = (a.date && a.time)\n  ? `${prettyDate(a.date, v.TIMEZONE)} at ${pretty12(a.time)}` : '';\n\n// ---- \"are you sure?\" interstitial, not an error ----\nif (v.reason === 'confirm-cancel') {\n  const yes = `${v.PUBLIC_BASE}/webhook/booking-action?ref=${encodeURIComponent(v.ref)}`\n            + `&token=${encodeURIComponent(v.token)}&action=cancel&do=1`;\n  const html = page('warn', 'Cancel this appointment?',\n    `<p>You are about to cancel:</p>\n     <table>\n       <tr><td>Treatment</td><td>${a.serviceName || ''}</td></tr>\n       <tr><td>When</td><td>${when}</td></tr>\n       <tr><td>Reference</td><td>${a.ref || v.ref}</td></tr>\n     </table>\n     <p style=\"font-size:14px;color:#4A6572\">The slot will be released for another patient. This cannot be undone.</p>\n     <a class=\"btn\" style=\"background:#B91C1C\" href=\"${yes}\">Yes, cancel it</a>\n     <p style=\"font-size:14px;color:#4A6572;text-align:center;margin-top:16px\">To keep your appointment, just close this page. Nothing has been changed.</p>`,\n    foot);\n  return [{ json: { ...v, html } }];\n}\n\nconst M = {\n  'not-found':        ['bad',  'Booking not found',      'We could not find that reference. Please check the link in your email, or call the clinic.'],\n  'bad-token':        ['bad',  'This link is not valid', 'The security code in this link does not match. Please use the original email, or call the clinic.'],\n  'expired':          ['warn', 'This hold has expired',  'The 30-minute hold ran out and the slot was released. Please book again — it only takes a minute.'],\n  'cancelled':        ['warn', 'Already cancelled',      'This appointment was already cancelled. The slot is free for someone else.'],\n  'already-confirmed':['good', 'Already confirmed',      'Good news — this appointment is already confirmed. Nothing more to do.'],\n  'past':             ['warn', 'This appointment has passed', 'That date has already gone by, so this link no longer does anything.'],\n  'too-late':         ['warn', 'Too close to cancel online', `Your appointment is ${when ? 'on ' + when : 'very soon'}, which is inside our ${v.CANCEL_CUTOFF_HOURS}-hour window. Please phone us on ${v.CLINIC_PHONE} so we can offer the slot to someone else.`]\n};\nconst [tone, title, msg] = M[v.reason] || ['bad', 'Something went wrong', 'Please call the clinic and we will sort it out.'];\nconst cta = v.reason === 'too-late'\n  ? `<a class=\"btn\" href=\"tel:${String(v.CLINIC_PHONE).replace(/[^0-9+]/g,'')}\">Call the clinic</a>`\n  : `<a class=\"btn\" href=\"${waBook || v.BOOKING_URL}\">${waBook ? 'Book on WhatsApp' : 'Book an appointment'}</a>`;\nconst html = page(tone, title, `<p>${msg}</p>${cta}`, foot);\nreturn [{ json: { ...v, html } }];\n"
+      },
+      "id": "build-error-page",
+      "name": "Build Error Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "show-error-page",
+      "name": "Show Error Page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        470,
+        480
+      ]
+    }
+  ],
+  "connections": {
+    "Patient Clicks Link": {
+      "main": [
+        [
+          {
+            "node": "Parse Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Link": {
+      "main": [
+        [
+          {
+            "node": "Read Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Appointments": {
+      "main": [
+        [
+          {
+            "node": "Verify Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link Valid?": {
+      "main": [
+        [
+          {
+            "node": "Confirm or Cancel?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Error Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Booking": {
+      "main": [
+        [
+          {
+            "node": "Link Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm or Cancel?": {
+      "main": [
+        [
+          {
+            "node": "Turn Hold Into Booking",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Release The Slot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Turn Hold Into Booking": {
+      "main": [
+        [
+          {
+            "node": "Build Confirmed Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Confirmed Page": {
+      "main": [
+        [
+          {
+            "node": "Mark CONFIRMED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark CONFIRMED": {
+      "main": [
+        [
+          {
+            "node": "Email Final Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Final Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Show Confirmed Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release The Slot": {
+      "main": [
+        [
+          {
+            "node": "Mark CANCELLED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark CANCELLED": {
+      "main": [
+        [
+          {
+            "node": "Build Cancelled Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Cancelled Page": {
+      "main": [
+        [
+          {
+            "node": "Show Cancelled Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Error Page": {
+      "main": [
+        [
+          {
+            "node": "Show Error Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "tags": [
+    {
+      "name": "DentalFlow"
+    }
+  ],
+  "meta": {
+    "instanceId": "dentalflow"
+  }
+}

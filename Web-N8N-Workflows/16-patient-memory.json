@@ -1,0 +1,385 @@
+{
+  "name": "DentalFlow · 16 Patient Memory",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "memory-read",
+        "responseMode": "responseNode",
+        "options": {},
+        "authentication": "headerAuth"
+      },
+      "id": "memory-read",
+      "name": "Memory Read",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        160
+      ],
+      "webhookId": "memory-read-hook"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "memory-save",
+        "responseMode": "responseNode",
+        "options": {},
+        "authentication": "headerAuth"
+      },
+      "id": "memory-save",
+      "name": "Memory Save",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        340
+      ],
+      "webhookId": "memory-save-hook"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "memory-hourly",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -900,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n/* ==========================================================================\n   >>> EDIT THESE <<<\n   ========================================================================== */\nconst SHEET_ID         = '1N-qE4v81o0uxyXxLFeCamHSkvALFQIixrES3K6-hE6c';\nconst SESSION_HOURS    = 24;     // a chat idle for longer than this starts fresh, and its messages are wiped from the sheet\nconst HISTORY_MESSAGES = 16;     // how many recent messages the assistant is shown\n/* ========================================================================== */\nconst MESSAGE_CHARS = 1500;      // one remembered message is cut to this length\n\n// Three ways in. The two webhooks are internal (they need the DentalFlow key)\n// and take the phone number from the caller: workflow 08 passes the verified\n// WhatsApp sender, never a number someone typed in a chat.\n//   read  what the assistant needs before it replies: the recent chat, who\n//         the patient is, and whether the team has an open request from them.\n//   save  after a reply: the two new messages; and after a booking: the\n//         patient's name and email, so they are not asked again next time.\n//   tidy  every hour, by itself: chats idle for SESSION_HOURS have their\n//         messages wiped, so old conversations do not sit in the sheet and\n//         the tab stays quick to read.\nconst inp = $input.first().json || {};\nconst b = inp.body || {};\nconst url = String(inp.webhookUrl || '');\nconst mode = /memory-save/.test(url) || b.save === true ? 'save' : /memory-read/.test(url) || b.phone !== undefined ? 'read' : 'tidy';\nconst base = { SHEET_ID, SESSION_HOURS, HISTORY_MESSAGES, MESSAGE_CHARS };\nif (mode === 'tidy') return [{ json: { ...base, mode } }];\n\nconst phone = String(b.phone || '').replace(/\\D/g, '');\nif (phone.length < 10) throw new Error('Missing or short \"phone\"');\n\n// language: what the assistant reported when booking (en, ur, roman-ur, ar).\n// script:   what the reply was written in (en = Latin letters, ar, ur). Latin\n//           letters cannot tell English from Roman Urdu, so a script of \"en\"\n//           never replaces a stored \"roman-ur\".\nconst norm = v => { const l = String(v || '').trim().toLowerCase();\n  return !l ? '' : /^ar/.test(l) ? 'ar' : /roman|latn|^ru$/.test(l) ? 'roman-ur' : /^ur/.test(l) ? 'ur' : /^en/.test(l) ? 'en' : ''; };\nconst text = (v, n) => String(v ?? '').replace(/\\r/g, '').trim().slice(0, n);\n// A name or email that starts like a spreadsheet formula loses that character.\nconst plain = (v, n) => String(v ?? '').replace(/[\\r\\n\\t]+/g, ' ').replace(/^[\\s=+\\-@]+/, '').replace(/\\s{2,}/g, ' ').trim().slice(0, n);\nconst p = (b.profile && typeof b.profile === 'object') ? b.profile : {};\nconst email = plain(p.email, 120);\n\nreturn [{ json: { ...base, mode, phone,\n  language: norm(b.language), script: norm(b.script),\n  said: text(b.said, MESSAGE_CHARS), reply: text(b.reply, MESSAGE_CHARS), note: text(b.note, 600),\n  profile: { name: plain(p.name, 60), email: /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(email) ? email : '' },\n  visit: b.visit === true } }];\n"
+      },
+      "id": "memory-config",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -660,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.SHEET_ID }}/values:batchGet?ranges=SessionState!A2:D&ranges=Patients!A2:H&ranges=Handoffs!A2:D&majorDimension=ROWS",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "memory-sheet",
+      "name": "Read Sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -440,
+        340
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\n/* PATIENT MEMORY: what the assistant remembers, kept in the clinic's own sheet.\n\n   SessionState  A phone | B updated_at | C language | D history\n     One row per WhatsApp number. history is the last few messages of the\n     chat. Because it is in the sheet and not in n8n's memory, a chat carries\n     on after n8n restarts. A chat idle for SESSION_HOURS starts fresh.\n   Patients      A phone | B name | C email | D language | E first_seen | F last_seen | G visits | H notes\n     One row per patient who has booked on WhatsApp. A returning patient is\n     greeted by name and is not asked for it again. The first booking sets the\n     name and email; later bookings (perhaps for a relative) never replace\n     them. Reception can correct them in the sheet. Column H is for staff and\n     is never read or written here.\n   Handoffs      read only, to answer one question: does the team have anything\n     open or recent for this number? Only then does workflow 08 make the full\n     handoff check, so most messages skip it.\n\n   An existing row is updated in place. A new row is APPENDED, which lets the\n   sheet grow and keeps two new patients arriving together from landing on the\n   same row. Everything is written as plain text (RAW), so nothing a patient\n   types can become a formula.                                               */\nconst c   = $('Config').first().json;\nconst res = $input.first().json || {};\nconst code = Number(res.statusCode || 0);\nconst clean = v => String(v ?? '').trim();\nconst now = Date.now();\n\nif (!(code >= 200 && code < 300)) {\n  const why = clean(res.body && res.body.error && res.body.error.message) || `HTTP ${code || 'no response'}`;\n  if (c.mode === 'tidy') throw new Error('The memory tabs could not be read: ' + why);\n  return [{ json: { mode: c.mode, hasUpdates: false, appends: [],\n    response: { ok: false, error: why, note: 'The memory tabs could not be read. Run the stage 4 sheet upgrade and check the Google Sheets credential in workflow 16.' } } }];\n}\n\nconst vr = (res.body && res.body.valueRanges) || [];\nconst rows = i => (vr[i] && vr[i].values) || [];        // 0 SessionState 1 Patients 2 Handoffs\nconst fresh = r => now - (Date.parse(clean(r[1])) || 0) < c.SESSION_HOURS * 3600000;\n\n/* ------------------------------------------------------------------- tidy */\nif (c.mode === 'tidy') {\n  const data = [];\n  rows(0).forEach((r, i) => { if (clean(r[3]) && clean(r[3]) !== '[]' && !fresh(r) && data.length < 300) data.push({ range: `SessionState!D${i + 2}`, values: [['']] }); });\n  if (!data.length) return [];\n  return [{ json: { mode: 'tidy', hasUpdates: true, appends: [], SHEET_ID: c.SHEET_ID, updates: { valueInputOption: 'RAW', data }, wiped: data.length } }];\n}\n\n/* Whose row is it? Every number here was written by us from a verified\n   WhatsApp sender, so two numbers are the same patient only when all their\n   digits are the same. (Matching on the last digits alone would let a number\n   in another country, ending the same way, read this patient's chat.)      */\nconst digits = v => clean(v).replace(/\\D/g, '').replace(/^0+/, '');\nconst mine = v => { const d = digits(v); return d.length >= 10 && d === digits(c.phone); };\nconst find = list => { const i = list.findIndex(r => mine(r[0])); return i < 0 ? null : { r: list[i], rowNumber: i + 2 }; };\n\nconst sess = find(rows(0));\nconst pat  = find(rows(1));\n\n// The remembered chat, if it is recent enough to still be the same conversation.\nlet history = [];\nif (sess && fresh(sess.r)) {\n  try { const h = JSON.parse(clean(sess.r[3]) || '[]'); if (Array.isArray(h)) history = h; } catch (e) { history = []; }\n  history = history.filter(m => m && (m.r === 'p' || m.r === 'a' || m.r === 'n') && typeof m.t === 'string' && m.t)\n                   .slice(-c.HISTORY_MESSAGES);\n}\nconst LANGS = ['en', 'ar', 'ur', 'roman-ur'];\nconst known = v => LANGS.includes(clean(v)) ? clean(v) : '';\n// What to store as this patient's language, given what is on file.\nconst nextLang = stored => c.language\n  || (c.script === 'ar' || c.script === 'ur' ? c.script : '')\n  || (c.script === 'en' ? (stored === 'roman-ur' ? 'roman-ur' : 'en') : '')\n  || stored;\n\n/* ------------------------------------------------------------------- read */\nif (c.mode === 'read') {\n  const handoff = rows(2).some(r => mine(r[3]) &&\n    (clean(r[2]).toUpperCase() !== 'DONE' || now - (Date.parse(clean(r[1])) || 0) < 24 * 3600000));\n  return [{ json: { mode: 'read', hasUpdates: false, appends: [], response: {\n    ok: true,\n    history: history.map(m => ({ role: m.r === 'p' ? 'patient' : m.r === 'n' ? 'note' : 'assistant', text: m.t })),\n    language: known(sess && sess.r[2]) || known(pat && pat.r[3]),\n    patient: pat && clean(pat.r[1])\n      ? { known: true, name: clean(pat.r[1]), email: clean(pat.r[2]), language: known(pat.r[3]), visits: Number(pat.r[6]) || 0 }\n      : { known: false },\n    handoff } } }];\n}\n\n/* ------------------------------------------------------------------- save */\nconst iso = new Date(now).toISOString();\nconst data = [], appends = [];\n\nif (c.said || c.reply || c.note) {\n  if (c.said)  history.push({ r: 'p', t: c.said });\n  if (c.reply) history.push({ r: 'a', t: c.reply });\n  if (c.note)  history.push({ r: 'n', t: c.note });\n  history = history.slice(-c.HISTORY_MESSAGES);\n  let json = JSON.stringify(history);\n  while (json.length > 45000 && history.length > 2) { history.shift(); json = JSON.stringify(history); }   // a cell holds 50,000 characters\n  const row = [c.phone, iso, nextLang(known(sess && sess.r[2])), json];\n  if (sess) data.push({ range: `SessionState!A${sess.rowNumber}:D${sess.rowNumber}`, values: [row] });\n  else appends.push({ tab: 'SessionState', range: 'SessionState!A:D', row });\n}\n\nif (pat) {\n  const r = pat.r;\n  data.push({ range: `Patients!A${pat.rowNumber}:G${pat.rowNumber}`, values: [[\n    clean(r[0]) || c.phone,\n    clean(r[1]) || c.profile.name,              // the name and email on file are kept: a later booking may be for a relative\n    clean(r[2]) || c.profile.email,\n    nextLang(known(r[3])),\n    clean(r[4]) || iso, iso,\n    (Number(r[6]) || 0) + (c.visit ? 1 : 0) ]] });\n} else if (c.profile.name || c.profile.email || c.visit) {\n  appends.push({ tab: 'Patients', range: 'Patients!A:G', row: [c.phone, c.profile.name, c.profile.email, nextLang(''), iso, iso, c.visit ? 1 : 0] });\n}\n\nreturn [{ json: { mode: 'save', SHEET_ID: c.SHEET_ID,\n  hasUpdates: data.length > 0, updates: { valueInputOption: 'RAW', data }, appends,\n  response: { ok: true, saved: data.length + appends.length } } }];\n"
+      },
+      "id": "memory-plan",
+      "name": "Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Plan').first().json.mode === 'tidy' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "memory-is-tidy",
+      "name": "Hourly Tidy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        0,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Plan').first().json.response) }}",
+        "options": {}
+      },
+      "id": "memory-respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Plan').first().json.hasUpdates === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "memory-has-updates",
+      "name": "Has Updates?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $('Plan').first().json.SHEET_ID }}/values:batchUpdate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Plan').first().json.updates) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "memory-write",
+      "name": "Save Rows",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// A patient we have no row for yet: their row is appended (the sheet grows by itself).\nconst p = $('Plan').first().json;\nreturn (p.appends || []).map(a => ({ json: { SHEET_ID: p.SHEET_ID, range: a.range, body: { values: [a.row] } } }));\n"
+      },
+      "id": "memory-new-rows",
+      "name": "New Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.SHEET_ID }}/values/{{ $json.range }}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "memory-append",
+      "name": "Append Row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        560
+      ]
+    }
+  ],
+  "connections": {
+    "Memory Read": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory Save": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Read Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Sheet": {
+      "main": [
+        [
+          {
+            "node": "Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan": {
+      "main": [
+        [
+          {
+            "node": "Hourly Tidy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hourly Tidy?": {
+      "main": [
+        [
+          {
+            "node": "Save Rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond": {
+      "main": [
+        [
+          {
+            "node": "Has Updates?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "New Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Updates?": {
+      "main": [
+        [
+          {
+            "node": "Save Rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "New Rows": {
+      "main": [
+        [
+          {
+            "node": "Append Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": true,
+    "timezone": "Asia/Karachi"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "active": false,
+  "tags": []
+}

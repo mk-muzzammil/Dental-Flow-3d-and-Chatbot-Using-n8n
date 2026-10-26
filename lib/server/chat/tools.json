@@ -1,0 +1,145 @@
+[
+  {
+    "name": "get_next_slots",
+    "description": "The next free appointment times for ONE treatment over the coming week: up to 8, each with a ready-made label, its date, its time and the dentist who is free then. Call it to offer times as soon as you know the treatment. Never guess times.",
+    "parametersJsonSchema": {
+      "type": "object",
+      "properties": {
+        "service": {
+          "type": "string",
+          "description": "Treatment id from the TREATMENTS list, for example checkup"
+        },
+        "doctor": {
+          "type": "string",
+          "description": "'any' for every dentist who does this treatment, or one doctor id from the DENTISTS list"
+        },
+        "lang": {
+          "type": "string",
+          "description": "The language the visitor is writing in: en, ur (Urdu script), roman-ur, or ar"
+        }
+      },
+      "required": [
+        "service",
+        "doctor",
+        "lang"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "get_available_slots",
+    "description": "Free appointment times for ONE date and ONE treatment. byDoctor says which dentist is free at which time. Use it when the visitor wants a particular day.",
+    "parametersJsonSchema": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "description": "Date to check, YYYY-MM-DD"
+        },
+        "service": {
+          "type": "string",
+          "description": "Treatment id from the TREATMENTS list"
+        },
+        "doctor": {
+          "type": "string",
+          "description": "A doctor id from the DENTISTS list, or 'any'"
+        }
+      },
+      "required": [
+        "date",
+        "service",
+        "doctor"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "get_doctors",
+    "description": "The clinic's dentists, with their ids and the treatments each one does. Only needed if the DENTISTS list says it is not available.",
+    "parametersJsonSchema": {
+      "type": "object",
+      "properties": {
+        "service": {
+          "type": "string",
+          "description": "Treatment id, to list only the dentists who do it"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "get_faq",
+    "description": "The clinic's approved answers to common questions. Only needed if the clinic details say the FAQ answers are not included.",
+    "parametersJsonSchema": {
+      "type": "object",
+      "properties": {
+        "lang": {
+          "type": "string",
+          "description": "The language the visitor is writing in: en, ur (Urdu script), roman-ur, or ar"
+        }
+      },
+      "required": [
+        "lang"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "create_booking",
+    "description": "Books AND confirms an appointment, then sends the confirmation by email. Only call after the visitor agreed to the summary with treatment, dentist, date, time, name, mobile number and email. Returns ok with the reference, or ok:false with a reason.",
+    "parametersJsonSchema": {
+      "type": "object",
+      "properties": {
+        "service": {
+          "type": "string",
+          "description": "Treatment id"
+        },
+        "date": {
+          "type": "string",
+          "description": "YYYY-MM-DD"
+        },
+        "time": {
+          "type": "string",
+          "description": "24-hour HH:MM, exactly as the slots tool returned it"
+        },
+        "doctor": {
+          "type": "string",
+          "description": "The doctor id of the dentist for the time picked, or 'any' when the clinic has a single dentist"
+        },
+        "name": {
+          "type": "string",
+          "description": "The patient's full name, as given"
+        },
+        "phone": {
+          "type": "string",
+          "description": "The mobile number exactly as the visitor gave it"
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address exactly as the visitor gave it"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Pain, allergies or nervousness mentioned. Empty string if none."
+        },
+        "language": {
+          "type": "string",
+          "description": "The language the visitor is writing in: en, ur (Urdu script), roman-ur, or ar"
+        }
+      },
+      "required": [
+        "service",
+        "date",
+        "time",
+        "doctor",
+        "name",
+        "phone",
+        "email",
+        "notes",
+        "language"
+      ],
+      "additionalProperties": false
+    }
+  }
+]

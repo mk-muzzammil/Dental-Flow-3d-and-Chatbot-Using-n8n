@@ -1,0 +1,234 @@
+{
+  "name": "DentalFlow · 04 Release Expired Holds",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "every-10-minutes",
+      "name": "Every 10 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -620,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n/* ==========================================================================\n   >>> EDIT THESE <<<\n   ========================================================================== */\nconst CALENDAR_ID    = 'primary';\nconst SHEET_ID       = '1N-qE4v81o0uxyXxLFeCamHSkvALFQIixrES3K6-hE6c';\nconst PUBLIC_BASE    = 'https://condone-making-amount.ngrok-free.dev';\nconst CLINIC_NAME    = 'Smile Dental Clinic';\nconst CLINIC_ADDRESS = '12 Main Boulevard, Lahore';\nconst CLINIC_PHONE   = '+92 300 000 0000';\nconst TIMEZONE       = 'Asia/Karachi';\nconst BOOKING_URL    = 'http://localhost:3000';   // where patients BOOK (not n8n)\nconst CANCEL_CUTOFF_HOURS = 4;                    // no self-service cancel inside this window\n/* ========================================================================== */\n\nreturn [{ json: { CALENDAR_ID, SHEET_ID, PUBLIC_BASE, BOOKING_URL, CLINIC_NAME, TIMEZONE } }];"
+      },
+      "id": "read-config",
+      "name": "Read Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.SHEET_ID }}/values/Appointments!A2:U",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "id": "read-appointments",
+      "name": "Read Appointments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n/* ==========================================================================\n   >>> EDIT THESE <<<\n   ========================================================================== */\nconst CALENDAR_ID    = 'primary';\nconst SHEET_ID       = '1N-qE4v81o0uxyXxLFeCamHSkvALFQIixrES3K6-hE6c';\nconst PUBLIC_BASE    = 'https://condone-making-amount.ngrok-free.dev';\nconst CLINIC_NAME    = 'Smile Dental Clinic';\nconst CLINIC_ADDRESS = '12 Main Boulevard, Lahore';\nconst CLINIC_PHONE   = '+92 300 000 0000';\nconst TIMEZONE       = 'Asia/Karachi';\nconst BOOKING_URL    = 'http://localhost:3000';   // where patients BOOK (not n8n)\nconst CLINIC_WHATSAPP = '15551915007';   // the clinic's WhatsApp number, digits only with country code, e.g. 923001234567.\n                               // Email buttons open this chat with the message ready. '' = buttons work as before.\nconst CANCEL_CUTOFF_HOURS = 4;                    // no self-service cancel inside this window\n/* ========================================================================== */\n\n// --- shared helpers -------------------------------------------------------\nconst toMin  = t => { const [h,m] = String(t).split(':').map(Number); return h*60 + (m||0); };\nconst toHHMM = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;\nconst parts  = (isoStr, tz) => {\n  const f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit',\n    day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });\n  const p = Object.fromEntries(f.formatToParts(new Date(isoStr)).map(x => [x.type, x.value]));\n  return { date: `${p.year}-${p.month}-${p.day}`, min: (Number(p.hour) % 24) * 60 + Number(p.minute) };\n};\nconst prettyDate = (d, tz) => new Date(d + 'T12:00:00Z')\n  .toLocaleDateString('en-GB', { timeZone: tz, weekday:'long', day:'numeric', month:'long', year:'numeric' });\nconst pretty12 = t => { const [h,m] = String(t).split(':').map(Number);\n  return `${((h+11)%12)+1}:${String(m).padStart(2,'0')} ${h>=12?'PM':'AM'}`; };\nconst busyBlocks = (fb, calId, day, tz) => {\n  const cal = fb.calendars || {};\n  const raw = (cal[calId] && cal[calId].busy) || (Object.values(cal)[0] || {}).busy || [];\n  const out = [];\n  for (const b of raw) {\n    const s = parts(b.start, tz), e = parts(b.end, tz);\n    if (e.date < day || s.date > day) continue;\n    out.push([ s.date < day ? 0 : s.min, e.date > day ? 1440 : e.min ]);\n  }\n  return out;\n};\n// --------------------------------------------------------------------------\n\nconst rows = ($input.first().json.values) || [];\nconst now  = Date.now();\nconst out  = [];\nrows.forEach((r, i) => {\n  if (String(r[2] || '').toUpperCase() !== 'PENDING') return;\n  const exp = Date.parse(r[14] || '');\n  if (!exp || exp > now) return;\n  out.push({ json: { CALENDAR_ID, SHEET_ID, PUBLIC_BASE, BOOKING_URL, CLINIC_WHATSAPP, CLINIC_NAME, TIMEZONE,\n    rowNumber: i + 2, ref: r[0], eventId: r[12], calendarId: String(r[20] || '').trim() || CALENDAR_ID, name: r[8], email: r[10],\n    serviceName: r[4], date: r[5], time: r[6],\n    prettyDate: prettyDate(r[5], TIMEZONE), prettyTime: pretty12(r[6]) } });\n});\nconsole.log('Releasing ' + out.length + ' expired hold(s)');\nreturn out;\n"
+      },
+      "id": "find-expired-holds",
+      "name": "Find Expired Holds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{ encodeURIComponent($json.calendarId) }}/events/{{ $json.eventId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "options": {},
+        "onError": "continueRegularOutput",
+        "alwaysOutputData": true
+      },
+      "id": "delete-held-event",
+      "name": "Delete Held Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        190,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $('Find Expired Holds').item.json.SHEET_ID }}/values/Appointments!C{{ $('Find Expired Holds').item.json.rowNumber }}?valueInputOption=USER_ENTERED",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ values: [['EXPIRED']] }) }}"
+      },
+      "id": "mark-expired",
+      "name": "Mark EXPIRED",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        390,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst v = $('Find Expired Holds').item.json;\n// Buttons open the clinic's WhatsApp chat with the message already typed; the patient just presses send.\nconst waDigits = String(v.CLINIC_WHATSAPP || '').replace(/\\D/g, '');\nconst wa = text => waDigits.length >= 8 ? `https://wa.me/${waDigits}?text=${encodeURIComponent(text)}` : '';\nconst waBook = wa('I would like to book an appointment.');\nconst html = `\n<div style=\"font-family:Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;color:#123F52\">\n  <div style=\"background:#B45309;color:#fff;padding:20px 24px;border-radius:14px 14px 0 0;font-size:18px;font-weight:bold\">\n    Your slot hold has expired</div>\n  <div style=\"border:1px solid #CDE9F1;border-top:0;border-radius:0 0 14px 14px;padding:24px;background:#fff\">\n    <p>Hello ${v.name},</p>\n    <p>We held <strong>${v.prettyDate} at ${v.prettyTime}</strong> for you, but the confirmation\n       link was not used in time, so the slot has been released for other patients.</p>\n    <p>No problem &mdash; you can book again in under a minute.</p>\n    <a href=\"${waBook || v.BOOKING_URL}\" style=\"display:block;text-align:center;background:#0E7490;color:#fff;\n       text-decoration:none;padding:14px;border-radius:12px;font-weight:bold\">${waBook ? 'Book again on WhatsApp' : 'Book again'}</a>\n  </div></div>`;\nreturn [{ json: { ...v, html, subject: `Your held slot has been released  [Ref: ${v.ref}]` } }];\n"
+      },
+      "id": "build-expiry-email",
+      "name": "Build Expiry Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        590,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "tell-patient-slot-released",
+      "name": "Tell Patient Slot Released",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        790,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Every 10 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Read Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Config": {
+      "main": [
+        [
+          {
+            "node": "Read Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Appointments": {
+      "main": [
+        [
+          {
+            "node": "Find Expired Holds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Expired Holds": {
+      "main": [
+        [
+          {
+            "node": "Delete Held Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Held Event": {
+      "main": [
+        [
+          {
+            "node": "Mark EXPIRED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark EXPIRED": {
+      "main": [
+        [
+          {
+            "node": "Build Expiry Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Expiry Email": {
+      "main": [
+        [
+          {
+            "node": "Tell Patient Slot Released",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "tags": [
+    {
+      "name": "DentalFlow"
+    }
+  ],
+  "meta": {
+    "instanceId": "dentalflow"
+  }
+}

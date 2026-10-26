@@ -1,4 +1,4 @@
-/** "My appointments" in the chat: what the chat window, the site's /api/appointments route and n8n workflow 18 send each other. */
+/** "My appointments" in the chat: what the chat window, the site's /api/appointments route send each other. */
 
 export type Appointment = {
   reference: string;
@@ -36,7 +36,7 @@ export function readContact(text: string): Contact | null {
 
 const str = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
 
-/** Keeps only the expected, size-limited fields of what n8n answered. */
+/** Keeps only the expected, size-limited fields of the service response. */
 export function cleanAnswer(raw: unknown): AppointmentsAnswer {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   if (o.ok !== true) return { ok: false, reason: str(o.reason, 40) || 'failed' };

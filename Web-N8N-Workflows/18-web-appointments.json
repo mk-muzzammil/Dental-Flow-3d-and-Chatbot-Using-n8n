@@ -1,0 +1,485 @@
+{
+  "name": "DentalFlow · 18 Web Appointments",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "web-appointments",
+        "responseMode": "responseNode",
+        "options": {},
+        "authentication": "headerAuth"
+      },
+      "id": "c5bc72a9-73f5-5668-8065-25c3836712ca",
+      "name": "Appointments Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "web-appointments-hook"
+    },
+    {
+      "parameters": {
+        "jsCode": "/* WEBSITE CHAT · MY APPOINTMENTS (workflow 18)\n   The website's chat window asks this workflow, through the website's own\n   server and the DentalFlow web key, for a visitor's upcoming appointments\n   (\"list\") or to cancel one of them (\"cancel\").\n\n   The visitor proves nothing but the mobile number or email they booked\n   with. Set MATCH to 'both' to require the mobile number AND the email of\n   the same booking (the chat then asks for both in one message).          */\n\n/* ==========================================================================\n   >>> EDIT THESE <<<\n   ========================================================================== */\nconst SHEET_ID            = 'PASTE_YOUR_GOOGLE_SHEET_ID';\nconst CLINIC_NAME         = 'Smile Dental Clinic';\nconst CLINIC_PHONE        = '+92 300 000 0000';\nconst CLINIC_WHATSAPP     = '';               // digits only with country code, e.g. 923001234567 ('' = none)\nconst CALENDAR_ID         = 'primary';        // used for bookings made before there were several dentists\nconst TIMEZONE            = 'Asia/Karachi';\nconst CANCEL_CUTOFF_HOURS = 0;                // 0 = can cancel any time before the visit starts\nconst MATCH               = 'either';         // 'either' = mobile OR email; 'both' = mobile AND email of the same booking\nconst EMAIL_PATIENT       = true;             // email the patient when a booking is cancelled from the website\nconst MAX_SHOWN           = 10;               // at most this many appointments are listed\n/* ========================================================================== */\nconst PHONE_MATCH_DIGITS = 10;                // a number is matched on its last 10 digits\n\nconst b = ($input.first().json || {}).body || {};\nconst clean = v => String(v ?? '').replace(/[\\r\\n\\t]+/g, ' ').trim();\nconst action = b.action === 'cancel' ? 'cancel' : 'list';\nconst lang = ['en', 'ur', 'ar'].includes(clean(b.lang)) ? clean(b.lang) : 'en';\n\nconst digits = clean(b.phone).replace(/\\D/g, '');\nconst phoneKey = digits.length >= PHONE_MATCH_DIGITS && digits.length <= 15 ? digits.slice(-PHONE_MATCH_DIGITS) : '';\nconst emailRaw = clean(b.email).toLowerCase().slice(0, 120);\nconst email = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(emailRaw) ? emailRaw : '';\nconst reference = clean(b.reference).toUpperCase().replace(/\\s+/g, '').slice(0, 20);\n\nlet invalid = '';\nif (MATCH === 'both' ? !(phoneKey && email) : !(phoneKey || email)) invalid = MATCH === 'both' ? 'need-phone-and-email' : 'invalid-contact';\nelse if (action === 'cancel' && !/^DN-?[A-Z0-9]{3,12}$/.test(reference)) invalid = 'invalid-reference';\n\nreturn [{ json: { SHEET_ID, CLINIC_NAME, CLINIC_PHONE, CLINIC_WHATSAPP, CALENDAR_ID, TIMEZONE,\n  CANCEL_CUTOFF_HOURS, MATCH, EMAIL_PATIENT, MAX_SHOWN, PHONE_MATCH_DIGITS,\n  action, lang, phoneKey, email, reference, invalid } }];\n"
+      },
+      "id": "43db64e2-4c10-59be-873f-b73013b410a0",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.SHEET_ID }}/values/Appointments!A2:U",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "id": "53bb95f9-b1f5-5c2a-b05e-e53bcef8eeb2",
+      "name": "Read Appointments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "/* The visitor's own bookings, from the Appointments tab.\n   Appointments columns: A reference · C status · E treatment · F date · G time\n   H minutes · I name · J phone · K email · L notes · M calendar event · T dentist · U calendar.\n   \"list\":   upcoming PENDING / CONFIRMED bookings of this mobile number or email.\n   \"cancel\": checks the reference is one of THEIR bookings and can still be\n             cancelled, then hands it on to free the dentist's calendar slot.\n   A reference that is not theirs gets the same answer as one that does not\n   exist, so nobody learns whether a reference exists.                       */\nconst c = $('Config').first().json;\nconst res = $input.first().json || {};\nconst done = response => [{ json: { ...c, go: false, response } }];\n\nif (c.invalid) return done({ ok: false, reason: c.invalid });\nif (!Array.isArray(res.values) && res.error) return done({ ok: false, reason: 'sheet-error' });\nconst rows = Array.isArray(res.values) ? res.values : [];\n\nconst tail = s => String(s || '').replace(/\\D/g, '').slice(-c.PHONE_MATCH_DIGITS);\nconst low = s => String(s || '').trim().toLowerCase();\nconst refKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');\nconst mine = r => {\n  const p = !!c.phoneKey && tail(r[9]).length === c.PHONE_MATCH_DIGITS && tail(r[9]) === c.phoneKey;\n  const e = !!c.email && low(r[10]) === c.email;\n  return c.MATCH === 'both' ? p && e : p || e;\n};\n\n// the clinic's UTC offset, e.g. +05:00, so \"2026-10-15 10:30\" is read as clinic time\nconst off = (() => {\n  try {\n    const s = new Intl.DateTimeFormat('en-US', { timeZone: c.TIMEZONE, timeZoneName: 'longOffset' })\n      .formatToParts(new Date()).find(x => x.type === 'timeZoneName').value.replace('GMT', '');\n    return s || '+00:00';\n  } catch (e) { return '+00:00'; }\n})();\nconst hhmm = t => { const m = /^(\\d{1,2}):(\\d{2})/.exec(String(t || '').trim()); return m ? `${m[1].padStart(2, '0')}:${m[2]}` : ''; };\nconst startOf = r => Date.parse(`${String(r[5] || '').trim()}T${hhmm(r[6]) || '00:00'}:00${off}`);\nconst ACTIVE = ['PENDING', 'CONFIRMED'];\nconst now = Date.now();\n\nconst card = r => ({\n  reference: String(r[0] || '').trim(),\n  service: String(r[4] || '').trim(),\n  dentist: String(r[19] || '').trim(),\n  date: String(r[5] || '').trim(),\n  time: hhmm(r[6]),\n  minutes: Number(r[7]) || 30,\n  status: String(r[2] || '').trim().toUpperCase() === 'PENDING' ? 'pending' : 'confirmed',\n});\n\nif (c.action === 'list') {\n  const list = rows\n    .map((r, i) => ({ r, i, at: startOf(r) }))\n    .filter(x => mine(x.r) && ACTIVE.includes(String(x.r[2] || '').trim().toUpperCase()) && Number.isFinite(x.at) && x.at > now)\n    .sort((a, b) => a.at - b.at)\n    .slice(0, c.MAX_SHOWN)\n    .map(x => card(x.r));\n  return done({ ok: true, appointments: list, cutoffHours: Number(c.CANCEL_CUTOFF_HOURS) || 0 });\n}\n\n/* ---- cancel ------------------------------------------------------------- */\nconst idx = rows.findIndex(r => refKey(r[0]) === refKey(c.reference) && mine(r));\nif (idx < 0) return done({ ok: false, reason: 'not-found', reference: c.reference });\nconst r = rows[idx];\nconst status = String(r[2] || '').trim().toUpperCase();\nif (status === 'CANCELLED') return done({ ok: false, reason: 'already-cancelled', reference: r[0] });\nif (!ACTIVE.includes(status)) return done({ ok: false, reason: 'not-active', reference: r[0] });\nconst at = startOf(r);\nconst hrs = (at - now) / 3600000;\nif (!Number.isFinite(at) || hrs <= 0) return done({ ok: false, reason: 'past', reference: r[0] });\nif (hrs < Number(c.CANCEL_CUTOFF_HOURS)) return done({ ok: false, reason: 'too-late', reference: r[0], cutoffHours: Number(c.CANCEL_CUTOFF_HOURS) });\n\n// a row without a calendar event (typed in by hand): Google answers 404, which counts as \"already free\"\nconst eventId = String(r[12] || '').trim() || '__no-event__';\nconst prettyDate = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });\nconst pretty12 = t => { const [h, m] = (hhmm(t) || '00:00').split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };\nconst stamp = new Date().toLocaleString('en-GB', { timeZone: c.TIMEZONE });\nconst notes = String(r[11] || '').trim();\nreturn [{ json: { ...c, go: true, rowNumber: idx + 2,\n  appt: { ...card(r), name: String(r[8] || '').trim(), email: String(r[10] || '').trim(), eventId,\n    calendarId: String(r[20] || '').trim() || c.CALENDAR_ID, when: `${prettyDate(String(r[5]).trim())} at ${pretty12(r[6])}` },\n  note: `${notes}${notes ? ' | ' : ''}Cancelled by patient in the website chat ${stamp}` } }];\n"
+      },
+      "id": "c82b82b1-86ea-512a-b784-080b02fcea0d",
+      "name": "Find",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.go }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "af340654-271e-5a44-b34f-2633785636e8",
+      "name": "Cancel?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{ encodeURIComponent($json.appt.calendarId) }}/events/{{ encodeURIComponent($json.appt.eventId) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "53bba6b4-1a89-535c-b357-7bf3194a2945",
+      "name": "Release The Slot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        180
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "/* Google's answer to \"delete this event\":\n     2xx      -> deleted: the dentist's time is free again\n     404/410  -> it was already gone: the same end state, so it counts as success\n     anything else (401/403 = credential, 5xx = Google) -> the time is still\n              blocked, so the booking is NOT marked cancelled: the sheet must\n              never say CANCELLED while the calendar keeps the chair booked.   */\nconst v = $('Find').first().json;\nconst code = Number(($input.first().json || {}).statusCode || 0);\nif ((code >= 200 && code < 300) || code === 404 || code === 410) return [{ json: { ...v, freed: true, alreadyGone: code === 404 || code === 410 } }];\nreturn [{ json: { ...v, freed: false, response: { ok: false, reason: 'calendar-error', reference: v.appt.reference } } }];\n"
+      },
+      "id": "d6184533-b93e-5e5e-8259-75fe416dc3ea",
+      "name": "Slot Released?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.freed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c8525c04-a070-56e3-a8fd-e1ff08fd2412",
+      "name": "Released?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $('Find').first().json.SHEET_ID }}/values/Appointments!C{{ $('Find').first().json.rowNumber }}?valueInputOption=USER_ENTERED",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ values: [['CANCELLED']] }) }}"
+      },
+      "id": "05933ffc-b977-54c3-91a8-505ac2b30807",
+      "name": "Mark CANCELLED",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        80
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $('Find').first().json.SHEET_ID }}/values/Appointments!L{{ $('Find').first().json.rowNumber }}?valueInputOption=USER_ENTERED",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ values: [[ $('Find').first().json.note ]] }) }}"
+      },
+      "id": "0552ba30-3250-5b3d-a1e2-38efd627739f",
+      "name": "Leave A Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        80
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "/* The answer for the chat window, and the cancellation email for the patient. */\nconst v = $('Released?').first().json;\nconst a = v.appt;\nconst esc = s => String(s ?? '').replace(/[&<>\"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[ch]));\nconst sendEmail = v.EMAIL_PATIENT === true && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(a.email);\nconst waDigits = String(v.CLINIC_WHATSAPP || '').replace(/\\D/g, '');\nconst waBook = waDigits.length >= 8 ? `https://wa.me/${waDigits}?text=${encodeURIComponent('I would like to book an appointment.')}` : '';\nconst email = `\n<div style=\"font-family:Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;color:#16272F\">\n  <div style=\"border-left:3px solid #B91C1C;padding:14px 18px;background:#FEF2F2;border-radius:0 8px 8px 0\">\n    <p style=\"margin:0;font-size:15px\"><strong>Your appointment has been cancelled.</strong></p>\n  </div>\n  <p style=\"font-size:15px;line-height:1.6\">Hello ${esc(a.name) || 'there'},</p>\n  <p style=\"font-size:15px;line-height:1.6\">The appointment below was cancelled in the chat on our website. The time is now free for another patient.</p>\n  <table style=\"font-size:15px;line-height:1.9;border-collapse:collapse;margin:18px 0\">\n    <tr><td style=\"color:#566B75;padding-right:18px\">Reference</td><td><strong>${esc(a.reference)}</strong></td></tr>\n    <tr><td style=\"color:#566B75;padding-right:18px\">Treatment</td><td>${esc(a.service)}</td></tr>\n    ${a.dentist ? `<tr><td style=\"color:#566B75;padding-right:18px\">Dentist</td><td>${esc(a.dentist)}</td></tr>` : ''}\n    <tr><td style=\"color:#566B75;padding-right:18px\">Was booked for</td><td>${esc(a.when)}</td></tr>\n  </table>\n  ${waBook ? `<p style=\"font-size:15px;line-height:1.6\">Changed your mind? <a href=\"${waBook}\" style=\"color:#0E7490\">Book another time on WhatsApp</a>, or in the chat on our website.</p>` : '<p style=\"font-size:15px;line-height:1.6\">Changed your mind? You can book another time in the chat on our website.</p>'}\n  <p style=\"font-size:13px;color:#566B75;line-height:1.6\">${esc(v.CLINIC_NAME)} &middot; ${esc(v.CLINIC_PHONE)}<br>\n    If you did not cancel this yourself, please phone us straight away.</p>\n</div>`;\nreturn [{ json: { ...v, sendEmail, subject: `Cancelled: ${a.service} on ${a.when} (${a.reference})`, email,\n  response: { ok: true, reference: a.reference, status: 'cancelled', emailed: sendEmail } } }];\n"
+      },
+      "id": "38204038-7aff-5bc6-b7bb-778a37c902cc",
+      "name": "Build Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.sendEmail }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "246f78c7-ea82-5020-b57c-9084cbf95a22",
+      "name": "Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.appt.email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.email }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "619585ac-131f-58ec-80b5-e60c8443b107",
+      "name": "Email The Patient",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2640,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Build Result').first().json.response) }}",
+        "options": {}
+      },
+      "id": "aed51060-92be-5dc5-bd64-23aefd82f487",
+      "name": "Respond Cancelled",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2860,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.response) }}",
+        "options": {}
+      },
+      "id": "8d0994cf-5e8e-5f83-91ff-162b863d226d",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Appointments Request": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Read Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Appointments": {
+      "main": [
+        [
+          {
+            "node": "Find",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find": {
+      "main": [
+        [
+          {
+            "node": "Cancel?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancel?": {
+      "main": [
+        [
+          {
+            "node": "Release The Slot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release The Slot": {
+      "main": [
+        [
+          {
+            "node": "Slot Released?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot Released?": {
+      "main": [
+        [
+          {
+            "node": "Released?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Released?": {
+      "main": [
+        [
+          {
+            "node": "Mark CANCELLED",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark CANCELLED": {
+      "main": [
+        [
+          {
+            "node": "Leave A Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leave A Note": {
+      "main": [
+        [
+          {
+            "node": "Build Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Result": {
+      "main": [
+        [
+          {
+            "node": "Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email?": {
+      "main": [
+        [
+          {
+            "node": "Email The Patient",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email The Patient": {
+      "main": [
+        [
+          {
+            "node": "Respond Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Karachi"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "active": false,
+  "tags": []
+}

@@ -1,0 +1,278 @@
+{
+  "name": "DentalFlow · 01 Slot Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "slots",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "patient-requests-slots",
+      "name": "Patient Requests Slots",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        300
+      ],
+      "webhookId": "slots-hook"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n/* ==========================================================================\n   >>> EDIT THESE FOUR VALUES, THEN NEVER AGAIN <<<\n   ========================================================================== */\nconst CALENDAR_ID = 'primary';                       // used only if the Doctors tab is empty\nconst SHEET_ID    = '1N-qE4v81o0uxyXxLFeCamHSkvALFQIixrES3K6-hE6c';    // from the sheet URL\nconst PUBLIC_BASE = 'https://condone-making-amount.ngrok-free.dev';\nconst CLINIC_NAME = 'Smile Dental Clinic';\n/* ========================================================================== */\n\n/*  GET /webhook/slots?date=2026-10-02&service=cleaning&doctor=dr-ayesha\n      doctor: a doctor_id from the Doctors tab, or \"any\" (the default)\n    GET /webhook/slots?list=doctors[&service=cleaning]\n      the dentists, optionally only those who do one treatment\n    GET /webhook/slots?next=1&service=cleaning[&doctor=dr-ayesha][&lang=ar]\n      the next free times over the coming week, a few from each day, so a\n      patient on WhatsApp can pick a day and a time in one tap              */\nconst q        = $input.first().json.query || {};\nconst listOnly = String(q.list || '').toLowerCase() === 'doctors';\nconst next     = !listOnly && ['1', 'true', 'yes'].includes(String(q.next || '').toLowerCase());\nconst NEXT_DAYS = 7;                                  // today and the 7 days after it\nconst date     = next ? '' : String(q.date || '');\nconst lg       = String(q.lang || '').trim().toLowerCase();\nconst lang     = /^ar/.test(lg) ? 'ar' : /roman|latn/.test(lg) ? 'en' : /^ur/.test(lg) ? 'ur' : 'en';\nconst service  = String(q.service || '').trim();\nconst doctor   = String(q.doctor || 'any').trim().toLowerCase() || 'any';\nif (!listOnly) {\n  if (!next && !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) throw new Error('Bad or missing \"date\" (expect YYYY-MM-DD)');\n  if (!service) throw new Error('Missing \"service\"');\n}\nconst base = listOnly || next ? new Date() : new Date(date + 'T00:00:00Z');\nconst iso  = d => d.toISOString().replace(/\\.\\d{3}Z$/, 'Z');\nreturn [{ json: { CALENDAR_ID, SHEET_ID, PUBLIC_BASE, CLINIC_NAME, date, service, doctor, listOnly,\n  next, lang, NEXT_DAYS,\n  timeMin: iso(new Date(base.getTime() - 86400000)),\n  timeMax: iso(new Date(base.getTime() + (next ? NEXT_DAYS + 2 : 2) * 86400000)) } }];\n"
+      },
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.SHEET_ID }}/values:batchGet?ranges=Services!A2:E&ranges=Hours!A2:G&ranges=Settings!A2:B&ranges=Holidays!A2:B&ranges=Doctors!A2:F&majorDimension=ROWS",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "id": "read-clinic-config",
+      "name": "Read Clinic Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        20,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/calendar/v3/freeBusy",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ timeMin: $('Config').first().json.timeMin, timeMax: $('Config').first().json.timeMax, items: $('Which Doctors').first().json.freeBusyItems }) }}"
+      },
+      "id": "calendar-freebusy",
+      "name": "Calendar FreeBusy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// ===== DentalFlow availability rules =========================================\n// The SAME code sits in workflow 01 (which times to offer) and workflow 02\n// (re-check at the moment of booking), so the two can never disagree.\n//\n// Doctors tab:  doctor_id | name | calendar_id | services | email | active\n//   services:   comma-separated service ids, or blank / \"all\"\n// Hours tab:    day | open | close | break_start | break_end | closed | doctor\n//   A doctor with ANY rows of their own uses only those rows: a day with no\n//   row is a day off. A doctor with no rows uses the clinic rows (doctor blank).\n// Nobody active in the Doctors tab: one doctor on the clinic calendar, exactly\n// as before multi-doctor support. (The tab itself must exist: run the sheet\n// upgrade before importing these workflows.)\nconst DF = (() => {\n  const clean = v => String(v ?? '').trim();\n  // \"14:00\", \"14:00:00\", \"14.00\" and \"2:00 PM\" all mean the same time; a sheet may show any of them.\n  const toMin = t => {\n    const m = /^(\\d{1,2})[:.](\\d{2})(?::\\d{2})?\\s*([ap])?\\.?m?\\.?$/i.exec(clean(t));\n    if (!m) return NaN;\n    let h = Number(m[1]); const ap = (m[3] || '').toLowerCase();\n    if (ap === 'p' && h < 12) h += 12;\n    if (ap === 'a' && h === 12) h = 0;\n    return h * 60 + Number(m[2]);\n  };\n  const toHHMM = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;\n  const truthy = v => clean(v).toUpperCase() === 'TRUE';\n  const parts = (isoStr, tz) => {\n    const f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit',\n      day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });\n    const p = Object.fromEntries(f.formatToParts(new Date(isoStr)).map(x => [x.type, x.value]));\n    return { date: `${p.year}-${p.month}-${p.day}`, min: (Number(p.hour) % 24) * 60 + Number(p.minute) };\n  };\n  const dayName = (date, tz) => new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' })\n    .format(new Date(date + 'T12:00:00Z')).toLowerCase();\n\n  function settings(rows) { const s = {}; for (const r of rows || []) s[clean(r[0])] = r[1]; return s; }\n\n  function services(rows) {\n    return (rows || []).map(r => ({ id: clean(r[0]), name: clean(r[1]), min: Number(r[2]), price: Number(r[3]),\n      active: r[4] === undefined || clean(r[4]).toUpperCase() !== 'FALSE' })).filter(s => s.id);\n  }\n\n  function doctors(rows, fallbackCalendar, fallbackName) {\n    const list = (rows || []).map(r => ({\n      id: clean(r[0]).toLowerCase(), name: clean(r[1]) || clean(r[0]), calendarId: clean(r[2]),\n      services: clean(r[3]), email: clean(r[4]),\n      active: r[5] === undefined || clean(r[5]).toUpperCase() !== 'FALSE'\n    })).filter(d => d.id && d.calendarId && d.active);\n    if (list.length) return list;\n    return [{ id: 'clinic', name: fallbackName || 'the dentist', calendarId: fallbackCalendar || 'primary',\n              services: 'all', email: '', active: true, implicit: true }];\n  }\n\n  const doesService = (d, svcId) => {\n    const s = d.services.toLowerCase();\n    return !s || s === 'all' || s.split(/[\\s,;]+/).filter(Boolean).includes(String(svcId).toLowerCase());\n  };\n\n  // wanted: a doctor id, or '' / 'any' for every doctor who does this treatment\n  function eligible(docs, svcId, wanted) {\n    const w = clean(wanted).toLowerCase();\n    const any = !w || w === 'any';\n    return docs.filter(d => doesService(d, svcId) && (any || d.id === w));\n  }\n\n  function hoursFor(hoursRows, doctorId, dow) {\n    const rows = hoursRows || [];\n    const own = rows.filter(r => clean(r[6]).toLowerCase() === doctorId);\n    const pool = own.length ? own : rows.filter(r => !clean(r[6]));\n    const r = pool.find(x => clean(x[0]).toLowerCase() === dow);\n    if (!r || truthy(r[5])) return null;                          // no row or closed = not working\n    const open = toMin(r[1] || '10:00'), close = toMin(r[2] || '20:00');\n    if (!(close > open)) return null;\n    const bs = toMin(r[3]), be = toMin(r[4]);\n    return { open, close, brk: bs < be ? [bs, be] : null };\n  }\n\n  // Busy blocks for one calendar on one day, in minutes. A calendar Google\n  // could not read is treated as fully busy: an unreadable diary must never\n  // look empty, or that doctor would be double-booked.\n  // Google may answer for \"primary\" under the account's email address instead.\n  // `asked` is every calendar id we asked about: one answer under a key we did\n  // not ask for can only be that calendar.\n  function busyFor(fb, calId, day, tz, asked) {\n    const cal = (fb && fb.calendars) || {};\n    let entry = cal[calId];\n    if (!entry) {\n      const keys = Object.keys(cal);\n      const spare = asked ? keys.filter(k => !asked.includes(k)) : keys;\n      if (spare.length === 1 && (asked || keys.length === 1)) entry = cal[spare[0]];\n    }\n    if (!entry || (entry.errors && entry.errors.length)) return { ok: false, blocks: [[0, 1440]] };\n    const blocks = [];\n    for (const b of entry.busy || []) {\n      const s = parts(b.start, tz), e = parts(b.end, tz);\n      if (e.date < day || s.date > day) continue;\n      blocks.push([s.date < day ? 0 : s.min, e.date > day ? 1440 : e.min]);\n    }\n    return { ok: true, blocks };\n  }\n\n  // Does an appointment of `dur` minutes at `start` fit this doctor's day?\n  function fits(start, dur, buffer, h, blocks) {\n    if (!h || !(start >= h.open) || start + dur > h.close) return false;\n    const all = h.brk ? blocks.concat([h.brk]) : blocks;\n    return !all.some(([bs, be]) => start < be && (start + dur + buffer) > bs);\n  }\n\n  function freeTimes({ dur, buffer, gran, earliest, h, blocks }) {\n    const out = [];\n    if (!h) return out;\n    for (let t = h.open; t + dur <= h.close; t += gran) {\n      if (t < earliest) continue;\n      if (fits(t, dur, buffer, h, blocks)) out.push(toHHMM(t));\n    }\n    return out;\n  }\n\n  const busyMinutes = blocks => blocks.reduce((n, [a, b]) => n + Math.max(0, b - a), 0);\n\n  return { clean, toMin, toHHMM, parts, dayName, settings, services, doctors, doesService,\n           eligible, hoursFor, busyFor, fits, freeTimes, busyMinutes };\n})();\n// =============================================================================\n\nconst c  = $('Config').first().json;\nconst vr = $('Read Clinic Config').first().json.valueRanges || [];\nconst w  = $('Which Doctors').first().json;\nconst fb = $input.first().json;\nconst rows = i => (vr[i] && vr[i].values) || [];\n\nconst set      = DF.settings(rows(2));\nconst TZ       = set.timezone || 'Asia/Karachi';\nconst BUFFER   = Number(set.buffer_min       ?? 10);\nconst LEAD_H   = Number(set.lead_hours       ?? 2);\nconst GRAN     = Number(set.slot_granularity ?? 15);\nconst holidays = new Set(rows(3).map(r => DF.clean(r[0])));\n\nconst named = w.eligible.filter(d => !d.implicit).map(d => ({ id: d.id, name: d.name }));\nconst out = extra => [{ json: { date: c.date, service: c.service, doctor: c.doctor, timezone: TZ,\n  slots: [], byDoctor: [], doctors: named, ...extra } }];\n\nconst svc = DF.services(rows(0)).find(s => s.id === c.service);\nif (!svc)                 return out({ reason: 'unknown-service' });\nif (!svc.active)          return out({ reason: 'service-inactive' });\n\nconst nowP = DF.parts(new Date().toISOString(), TZ);\n\n/* ---- next=1: the next free times over the coming week --------------------\n   For a patient choosing on WhatsApp: instead of \"which day?\" and then\n   \"which time?\", one short list with real free times. From each day, one in\n   the morning, one in the afternoon and one in the evening when there are\n   any, earliest days first, at most LIMIT in all. The rules for what counts\n   as free are the same DF rules as for a single day, so a time offered here\n   is a time the single-day check would also offer.                         */\nif (c.next) {\n  const LIMIT = 8;\n  const asked = w.eligible.map(x => x.calendarId);\n  const addDays = (ymd, n) => new Date(Date.parse(ymd + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);\n  const part = t => { const m = DF.toMin(t); return m < 720 ? 0 : m < 1020 ? 1 : 2; };     // before 12:00, before 17:00, later\n  const WD = { en: 'en-GB', ar: 'ar-EG-u-nu-latn-ca-gregory', ur: 'ur-PK-u-nu-latn-ca-gregory' }[c.lang] || 'en-GB';\n  const noon = ymd => new Date(ymd + 'T12:00:00Z');\n  const clock = t => { const [h, m] = t.split(':').map(Number);\n    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${c.lang === 'ar' ? (h >= 12 ? 'م' : 'ص') : (h >= 12 ? 'PM' : 'AM')}`; };\n  // A row title on WhatsApp holds 24 characters. English: \"Fri 9 Oct · 3:00 PM\". Arabic and Urdu day names are\n  // longer, so the date is written day/month: \"الجمعة 9/10 · 3:00 م\".\n  const label = (ymd, t) => {\n    const [, mo, d] = ymd.split('-').map(Number);\n    const day = c.lang === 'en'\n      ? `${noon(ymd).toLocaleDateString(WD, { timeZone: 'UTC', weekday: 'short' })} ${d} ${noon(ymd).toLocaleDateString(WD, { timeZone: 'UTC', month: 'short' })}`\n      : `${noon(ymd).toLocaleDateString(WD, { timeZone: 'UTC', weekday: 'long' })} ${d}/${mo}`;\n    return `${day} · ${clock(t)}`;\n  };\n\n  const options = [], unreadable = new Set();\n  let worked = 0;\n  for (let i = 0; i <= c.NEXT_DAYS && options.length < LIMIT; i++) {\n    const date = addDays(nowP.date, i);\n    if (holidays.has(date)) continue;\n    const dow = DF.dayName(date, TZ);\n    const earliest = i === 0 ? nowP.min + LEAD_H * 60 : -1;\n    const free = new Map();                                  // time -> the dentists free then\n    for (const d of w.eligible) {\n      const h = DF.hoursFor(rows(1), d.id, dow);\n      if (!h) continue;\n      worked++;\n      const busy = DF.busyFor(fb, d.calendarId, date, TZ, asked);\n      if (!busy.ok) { unreadable.add(d.id); continue; }      // never guess at a diary we can't read\n      const load = DF.busyMinutes(busy.blocks);\n      for (const t of DF.freeTimes({ dur: svc.min, buffer: BUFFER, gran: GRAN, earliest, h, blocks: busy.blocks })) {\n        if (!free.has(t)) free.set(t, []);\n        free.get(t).push({ d, load });\n      }\n    }\n    const times = [...free.keys()].sort();\n    const picked = [0, 1, 2].map(p => times.find(t => part(t) === p)).filter(Boolean);\n    for (const t of picked) {\n      if (options.length >= LIMIT) break;\n      const who = free.get(t).sort((a, b) => a.load - b.load)[0].d;      // the dentist with the lighter day\n      options.push({ label: label(date, t), date, time: t,\n                     doctor: who.implicit ? '' : who.id, doctorName: who.implicit ? '' : who.name });\n    }\n  }\n  return [{ json: { next: true, service: c.service, serviceName: svc.name, durationMin: svc.min, price: svc.price,\n    doctor: c.doctor, timezone: TZ, doctors: named, options,\n    ...(options.length ? {} : { reason: worked ? 'nothing-free-this-week' : 'closed' }),\n    ...(unreadable.size ? { unreadable: [...unreadable] } : {}),\n    how: 'Offer these in this order, each label exactly as written, with doctorName as the small second line when it is not empty. ' +\n         'To book one, pass its date, time and doctor to create_booking (doctor \"any\" when it is empty).' } }];\n}\n\nif (holidays.has(c.date)) return out({ reason: 'holiday' });\n\nconst dow  = DF.dayName(c.date, TZ);\nconst earliest = nowP.date === c.date ? nowP.min + LEAD_H * 60 : (c.date < nowP.date ? 99999 : -1);\n\nconst byDoctor = [], unreadable = [];\nlet working = 0;\nfor (const d of w.eligible) {\n  const h = DF.hoursFor(rows(1), d.id, dow);\n  if (!h) continue;                                       // not working that day\n  working++;\n  const busy = DF.busyFor(fb, d.calendarId, c.date, TZ, w.eligible.map(x => x.calendarId));\n  if (!busy.ok) { unreadable.push(d.id); continue; }      // never guess at a diary we can't read\n  const slots = DF.freeTimes({ dur: svc.min, buffer: BUFFER, gran: GRAN, earliest, h, blocks: busy.blocks });\n  if (slots.length) byDoctor.push({ doctor: d.implicit ? '' : d.id, doctorName: d.implicit ? '' : d.name, slots });\n}\n// \"slots\" stays a plain list of times (every free time, across the chosen\n// doctors) so older booking pages keep working; byDoctor says who is free when.\nconst slots = [...new Set(byDoctor.flatMap(b => b.slots))].sort();\nconst reason = slots.length ? undefined : (working ? 'fully-booked' : 'closed');\nreturn out({ serviceName: svc.name, durationMin: svc.min, price: svc.price, slots, byDoctor,\n  ...(reason ? { reason } : {}), ...(unreadable.length ? { unreadable } : {}) });\n"
+      },
+      "id": "compute-free-slots",
+      "name": "Compute Free Slots",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "return-slots",
+      "name": "Return Slots",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// ===== DentalFlow availability rules =========================================\n// The SAME code sits in workflow 01 (which times to offer) and workflow 02\n// (re-check at the moment of booking), so the two can never disagree.\n//\n// Doctors tab:  doctor_id | name | calendar_id | services | email | active\n//   services:   comma-separated service ids, or blank / \"all\"\n// Hours tab:    day | open | close | break_start | break_end | closed | doctor\n//   A doctor with ANY rows of their own uses only those rows: a day with no\n//   row is a day off. A doctor with no rows uses the clinic rows (doctor blank).\n// Nobody active in the Doctors tab: one doctor on the clinic calendar, exactly\n// as before multi-doctor support. (The tab itself must exist: run the sheet\n// upgrade before importing these workflows.)\nconst DF = (() => {\n  const clean = v => String(v ?? '').trim();\n  // \"14:00\", \"14:00:00\", \"14.00\" and \"2:00 PM\" all mean the same time; a sheet may show any of them.\n  const toMin = t => {\n    const m = /^(\\d{1,2})[:.](\\d{2})(?::\\d{2})?\\s*([ap])?\\.?m?\\.?$/i.exec(clean(t));\n    if (!m) return NaN;\n    let h = Number(m[1]); const ap = (m[3] || '').toLowerCase();\n    if (ap === 'p' && h < 12) h += 12;\n    if (ap === 'a' && h === 12) h = 0;\n    return h * 60 + Number(m[2]);\n  };\n  const toHHMM = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;\n  const truthy = v => clean(v).toUpperCase() === 'TRUE';\n  const parts = (isoStr, tz) => {\n    const f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit',\n      day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });\n    const p = Object.fromEntries(f.formatToParts(new Date(isoStr)).map(x => [x.type, x.value]));\n    return { date: `${p.year}-${p.month}-${p.day}`, min: (Number(p.hour) % 24) * 60 + Number(p.minute) };\n  };\n  const dayName = (date, tz) => new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' })\n    .format(new Date(date + 'T12:00:00Z')).toLowerCase();\n\n  function settings(rows) { const s = {}; for (const r of rows || []) s[clean(r[0])] = r[1]; return s; }\n\n  function services(rows) {\n    return (rows || []).map(r => ({ id: clean(r[0]), name: clean(r[1]), min: Number(r[2]), price: Number(r[3]),\n      active: r[4] === undefined || clean(r[4]).toUpperCase() !== 'FALSE' })).filter(s => s.id);\n  }\n\n  function doctors(rows, fallbackCalendar, fallbackName) {\n    const list = (rows || []).map(r => ({\n      id: clean(r[0]).toLowerCase(), name: clean(r[1]) || clean(r[0]), calendarId: clean(r[2]),\n      services: clean(r[3]), email: clean(r[4]),\n      active: r[5] === undefined || clean(r[5]).toUpperCase() !== 'FALSE'\n    })).filter(d => d.id && d.calendarId && d.active);\n    if (list.length) return list;\n    return [{ id: 'clinic', name: fallbackName || 'the dentist', calendarId: fallbackCalendar || 'primary',\n              services: 'all', email: '', active: true, implicit: true }];\n  }\n\n  const doesService = (d, svcId) => {\n    const s = d.services.toLowerCase();\n    return !s || s === 'all' || s.split(/[\\s,;]+/).filter(Boolean).includes(String(svcId).toLowerCase());\n  };\n\n  // wanted: a doctor id, or '' / 'any' for every doctor who does this treatment\n  function eligible(docs, svcId, wanted) {\n    const w = clean(wanted).toLowerCase();\n    const any = !w || w === 'any';\n    return docs.filter(d => doesService(d, svcId) && (any || d.id === w));\n  }\n\n  function hoursFor(hoursRows, doctorId, dow) {\n    const rows = hoursRows || [];\n    const own = rows.filter(r => clean(r[6]).toLowerCase() === doctorId);\n    const pool = own.length ? own : rows.filter(r => !clean(r[6]));\n    const r = pool.find(x => clean(x[0]).toLowerCase() === dow);\n    if (!r || truthy(r[5])) return null;                          // no row or closed = not working\n    const open = toMin(r[1] || '10:00'), close = toMin(r[2] || '20:00');\n    if (!(close > open)) return null;\n    const bs = toMin(r[3]), be = toMin(r[4]);\n    return { open, close, brk: bs < be ? [bs, be] : null };\n  }\n\n  // Busy blocks for one calendar on one day, in minutes. A calendar Google\n  // could not read is treated as fully busy: an unreadable diary must never\n  // look empty, or that doctor would be double-booked.\n  // Google may answer for \"primary\" under the account's email address instead.\n  // `asked` is every calendar id we asked about: one answer under a key we did\n  // not ask for can only be that calendar.\n  function busyFor(fb, calId, day, tz, asked) {\n    const cal = (fb && fb.calendars) || {};\n    let entry = cal[calId];\n    if (!entry) {\n      const keys = Object.keys(cal);\n      const spare = asked ? keys.filter(k => !asked.includes(k)) : keys;\n      if (spare.length === 1 && (asked || keys.length === 1)) entry = cal[spare[0]];\n    }\n    if (!entry || (entry.errors && entry.errors.length)) return { ok: false, blocks: [[0, 1440]] };\n    const blocks = [];\n    for (const b of entry.busy || []) {\n      const s = parts(b.start, tz), e = parts(b.end, tz);\n      if (e.date < day || s.date > day) continue;\n      blocks.push([s.date < day ? 0 : s.min, e.date > day ? 1440 : e.min]);\n    }\n    return { ok: true, blocks };\n  }\n\n  // Does an appointment of `dur` minutes at `start` fit this doctor's day?\n  function fits(start, dur, buffer, h, blocks) {\n    if (!h || !(start >= h.open) || start + dur > h.close) return false;\n    const all = h.brk ? blocks.concat([h.brk]) : blocks;\n    return !all.some(([bs, be]) => start < be && (start + dur + buffer) > bs);\n  }\n\n  function freeTimes({ dur, buffer, gran, earliest, h, blocks }) {\n    const out = [];\n    if (!h) return out;\n    for (let t = h.open; t + dur <= h.close; t += gran) {\n      if (t < earliest) continue;\n      if (fits(t, dur, buffer, h, blocks)) out.push(toHHMM(t));\n    }\n    return out;\n  }\n\n  const busyMinutes = blocks => blocks.reduce((n, [a, b]) => n + Math.max(0, b - a), 0);\n\n  return { clean, toMin, toHHMM, parts, dayName, settings, services, doctors, doesService,\n           eligible, hoursFor, busyFor, fits, freeTimes, busyMinutes };\n})();\n// =============================================================================\n\nconst c  = $('Config').first().json;\nconst vr = $input.first().json.valueRanges || [];\nconst rows = i => (vr[i] && vr[i].values) || [];   // 0 Services 1 Hours 2 Settings 3 Holidays 4 Doctors\nconst set  = DF.settings(rows(2));\nconst docs = DF.doctors(rows(4), c.CALENDAR_ID, set.clinic_name || c.CLINIC_NAME);\nconst svcs = DF.services(rows(0)).filter(s => s.active);\nconst pub  = d => ({ id: d.id, name: d.name,\n  services: svcs.filter(s => DF.doesService(d, s.id)).map(s => s.id) });\n\n// The list of dentists, for the booking page and the WhatsApp assistant.\nif (c.listOnly) {\n  const list = c.service ? DF.eligible(docs, c.service, 'any') : docs;\n  return [{ json: { answerNow: true, response: { doctors: list.filter(d => !d.implicit).map(pub) } } }];\n}\n\nconst eligible = DF.eligible(docs, c.service, c.doctor);\nif (!eligible.length) {\n  return [{ json: { answerNow: true, response: { date: c.date, service: c.service, doctor: c.doctor,\n    slots: [], byDoctor: [], doctors: [],\n    reason: docs.some(d => d.id === c.doctor) ? 'doctor-does-not-do-this' : 'no-doctor' } } }];\n}\nreturn [{ json: { answerNow: false, eligible,\n  freeBusyItems: eligible.map(d => ({ id: d.calendarId })) } }];\n"
+      },
+      "id": "which-doctors",
+      "name": "Which Doctors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.answerNow }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "answer-now",
+      "name": "Answer Now?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.response) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "return-doctors",
+      "name": "Return Directly",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        680,
+        480
+      ]
+    }
+  ],
+  "connections": {
+    "Patient Requests Slots": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Read Clinic Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Clinic Config": {
+      "main": [
+        [
+          {
+            "node": "Which Doctors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calendar FreeBusy": {
+      "main": [
+        [
+          {
+            "node": "Compute Free Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Free Slots": {
+      "main": [
+        [
+          {
+            "node": "Return Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which Doctors": {
+      "main": [
+        [
+          {
+            "node": "Answer Now?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Now?": {
+      "main": [
+        [
+          {
+            "node": "Return Directly",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Calendar FreeBusy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "tags": [
+    {
+      "name": "DentalFlow"
+    }
+  ],
+  "meta": {
+    "instanceId": "dentalflow"
+  }
+}

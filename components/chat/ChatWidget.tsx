@@ -3,7 +3,7 @@
  * THE CHAT WINDOW (bottom corner of every page).
  *
  * - Sends each message to /api/chat (this website's server), which passes it
- *   to the clinic's assistant in n8n and returns its answer as JSON.
+ *   to the clinic's assistant in Next.js and returns its answer as JSON.
  * - Shows the answer's buttons (quickReplies) and scrolling cards (carousel);
  *   tapping one sends its value as the visitor's next message.
  * - Shows "Assistant is typing…" while waiting, and a booking card when an
@@ -14,11 +14,10 @@
  *   panel: treatment, dentist and time are chosen there, one under another,
  *   and only Confirm sends a message.
  * - The microphone button records a voice message; the assistant listens to
- *   it (in n8n) and the words it heard are shown under the voice bubble.
+ *   it on the server and the words it heard are shown under the voice bubble.
  * - "View My Appointments" and "Cancel an Appointment" run here, without the
  *   assistant: the visitor types the mobile number or email they booked with,
- *   their upcoming appointments appear as cards (/api/appointments, n8n
- *   workflow 18), and a card's Cancel asks "Are you sure?" first. The number
+ *   their upcoming appointments appear as cards (/api/appointments), and a card's Cancel asks "Are you sure?" first. The number
  *   or email is kept in memory only, never in the browser's storage.
  * - Other parts of the page open it with openChat() from sections/ui.
  */
@@ -34,7 +33,7 @@ import { BookingPanel, requestMessage, type BookingRequest, type PanelStart } fr
 import { MAX_SECONDS, useVoice } from './useVoice';
 import { clock, dayTitle } from '@/lib/slots';
 
-type Extra = { audio?: { mime: string; data: string }; voice?: { seconds: number; url?: string }; request?: BookingRequest };
+type Extra = { idempotencyKey?: string; audio?: { mime: string; data: string }; voice?: { seconds: number; url?: string }; request?: BookingRequest };
 
 type Msg = {
   id: string;
@@ -181,6 +180,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
   const retryAudio = useRef(new Map<string, Extra>());
   const send = useCallback(async (text: string, shown?: string, extra: Extra = {}) => {
     const message = text.trim().slice(0, 1000);
+    const attempt = { ...extra, idempotencyKey: extra.idempotencyKey || crypto.randomUUID() };
     if ((!message && !extra.audio) || busy) return;
     const before = msgsRef.current.filter(m => !m.error);
     const mine: Msg = extra.voice
@@ -192,7 +192,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': attempt.idempotencyKey },
         body: JSON.stringify({ sessionId: session.current, message, history: toHistory(before), lang, demoState: demoState.current, ...(extra.audio ? { audio: extra.audio } : {}) }),
       });
       const data = (await res.json().catch(() => null)) as (ChatResponse & { error?: string; detail?: string }) | null;
@@ -206,7 +206,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
     } catch (e) {
       const detail = (e as { detail?: string })?.detail;
       const id = uid();
-      if (extra.audio || extra.request) retryAudio.current.set(id, extra);
+      retryAudio.current.set(id, attempt);
       setMsgs(m => [...m, { id, role: 'assistant', text: t.error, error: true, retry: message || ' ', detail }]);
     } finally {
       setBusy(false);
@@ -557,33 +557,13 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
                     <svg viewBox="0 0 20 20" className="h-4.5 w-4.5 rtl:-scale-x-100" aria-hidden="true"><path d="M3.5 10h12M11 5l5 5-5 5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </motion.button>
                 ) : (
-                <div className="flex items-end gap-2 rounded-2xl bg-mist p-1.5 ring-1 ring-line focus-within:ring-2 focus-within:ring-brand/40">
-                  <label htmlFor="dentalflow-chat-input" className="sr-only">{t.placeholder}</label>
-                  <textarea
-                    id="dentalflow-chat-input"
-                    ref={input}
-                    rows={1}
-                    value={draft}
-                    maxLength={1000}
-                    onChange={e => setDraft(e.target.value)}
-                    onKeyDown={onKey}
-                    placeholder={t.placeholder}
-                    dir="auto"
-                    className="max-h-[120px] min-h-[40px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] leading-6 text-ink outline-none placeholder:text-muted focus-visible:outline-none"
-                  />
-                  {draft.trim() ? (
-                    <motion.button type="submit" disabled={busy} whileTap={{ scale: 0.9 }} aria-label={t.send}
-                      className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ink text-white transition disabled:bg-line disabled:text-muted">
-                      <svg viewBox="0 0 20 20" className="h-4.5 w-4.5 rtl:-scale-x-100" aria-hidden="true"><path d="M3.5 10h12M11 5l5 5-5 5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </motion.button>
-                  ) : (
                     <motion.button type="button" onClick={() => void voice.start()} disabled={busy} whileTap={{ scale: 0.9 }} aria-label={t.voiceStart} title={t.voiceStart}
                       className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-linear-to-br from-brand to-accent text-white transition disabled:opacity-40">
                       <svg viewBox="0 0 20 20" className="h-4.5 w-4.5" aria-hidden="true"><rect x="7" y="2.5" width="6" height="10" rx="3" fill="currentColor" /><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" stroke="currentColor" strokeWidth="1.7" fill="none" strokeLinecap="round" /></svg>
                     </motion.button>
-                  )}
-                </div>
                 )}
+              </div>
+              )}
                 <p className="mt-2 px-1 text-center text-[10.5px] leading-snug text-muted">
                   {fill(t.privacy, { phone: `\u2066${phone}\u2069` })} · {t.poweredBy}
                 </p>
