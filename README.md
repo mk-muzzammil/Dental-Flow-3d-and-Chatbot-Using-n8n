@@ -14,10 +14,19 @@ npm run dev
 
 Open `/en`, `/ur`, or `/ar`. `APP_MODE=demo` works without MongoDB, Google, or Gemini credentials. Demo appointments are simulated. Live mode never falls back to simulated success.
 
+For local development with pnpm 11, use the checked-in pnpm lockfile and build approvals:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+Keep your existing `.env.local`; copy `.env.example` only if you have not created it yet. Use one package manager consistently for local installs. Switching from npm to pnpm may print warnings about moving packages installed by another package manager. `pnpm-workspace.yaml` explicitly allows the install scripts for `@google/genai`, `esbuild`, and `protobufjs`, preventing `ERR_PNPM_IGNORED_BUILDS` for these dependencies. Review any newly blocked dependencies with `pnpm approve-builds`.
+
 ## Live setup
 
 1. Fill the server-only values in `.env.local` using `.env.example`. Set a canonical `APP_URL`, MongoDB database, admin email, password hash, and three distinct secrets: JWT signing, token encryption, and cron authentication.
-2. Generate a password hash with `npm run admin:hash`, providing the password on stdin. Do not put passwords in command-line arguments. In a Next.js `.env.local`, escape every `$` in the generated hash as `\$`; in Vercel settings paste the literal hash without backslashes. Generate `TOKEN_ENCRYPTION_KEY` as 32 random bytes encoded as base64. JWT and cron secrets must each contain at least 32 characters.
+2. Generate a password hash with `npm run admin:hash`, providing the password on stdin. Passwords must be 8–1024 characters. Do not put passwords in command-line arguments. In a Next.js `.env.local`, escape every `$` in the generated hash as `\$`; in Vercel settings paste the literal hash without backslashes. Generate `TOKEN_ENCRYPTION_KEY` as 32 random bytes encoded as base64. JWT and cron secrets must each contain at least 32 characters.
 3. Run `npm run db:init`. The script reads `.env.local`; indexes are also initialized on login and live mutations. Use a separate database for each clinic/environment.
 4. In Google Cloud, enable Sheets, Calendar, and Gmail APIs. Create a **Web Application** OAuth client. Register the exact callback `APP_URL/api/admin/integrations/google/callback`. Set `GOOGLE_REDIRECT_URI` to that same URL.
 5. Visit `/admin/login` and sign in with the environment credentials. Under **Integrations**, connect the owner’s Google account, select the clinic Sheet and fallback Calendar, and run the access checks. Google login does not create an admin account.
@@ -65,6 +74,8 @@ npm audit
 The migration-only automated test harness and its dependencies have been removed. Typechecking and production builds remain available; live behavior should be checked against dedicated staging resources using the migration checklist.
 
 See [migration and recovery](docs/migration.md) and [approved change ledger](docs/change-ledger.md). Live OAuth consent, Google resource access, Gmail delivery, Gemini semantic behavior, and Vercel scheduling still require environment-specific staging verification.
+
+For local testing with separate doctor calendars, sample patient data, and manual expiry runs, follow the [local live testing guide](docs/local-live-testing.md).
 
 ## Application structure
 

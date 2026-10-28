@@ -24,7 +24,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { Booking, Carousel, ChatResponse, DemoState, HistoryItem, QuickReply } from '@/lib/chat-types';
-import { dictionaries, fill, type Dict, type Lang } from '@/lib/i18n';
+import { fill, type Dict, type Lang } from '@/lib/i18n';
+import { chatAction } from '@/lib/chat-actions';
+import { withFollowUp } from '@/lib/chat-follow-up';
 import { readContact, type Appointment, type AppointmentsAnswer, type Contact } from '@/lib/appointments';
 import { AppointmentCards } from './Appointments';
 import { OPEN_CHAT_EVENT, type OpenChatDetail } from '../sections/ui';
@@ -59,21 +61,6 @@ type Msg = {
   request?: BookingRequest;
   /** the visitor's appointments, shown as cards ("key" ties them to the number or email looked up during this visit) */
   appts?: { purpose: 'view' | 'cancel'; items: Appointment[]; key: string };
-};
-
-/** the menu buttons, in every language the assistant may write them in (it can answer in Roman Urdu too) */
-type Action = 'book' | 'view' | 'cancel' | 'never' | 'another';
-const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
-const ACTIONS: [Action, string[]][] = [
-  ['book', ['book appointment', 'nayi appointment book karein', ...Object.values(dictionaries).flatMap(d => [d.chat.starters[0]])]],
-  ['view', ['meri appointments dekhein', ...Object.values(dictionaries).map(d => d.chat.starters[1])]],
-  ['cancel', ['appointment cancel karein', ...Object.values(dictionaries).map(d => d.chat.starters[2])]],
-  ['never', Object.values(dictionaries).map(d => d.chat.neverMind)],
-  ['another', Object.values(dictionaries).map(d => d.chat.tryAnother)],
-];
-const actionOf = (title: string): Action | null => {
-  const n = norm(title);
-  return ACTIONS.find(([, labels]) => labels.some(l => norm(l) === n))?.[0] ?? null;
 };
 
 const STORE_KEY = 'dentalflow-chat:v1';
@@ -207,7 +194,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
       const detail = (e as { detail?: string })?.detail;
       const id = uid();
       retryAudio.current.set(id, attempt);
-      setMsgs(m => [...m, { id, role: 'assistant', text: t.error, error: true, retry: message || ' ', detail }]);
+      setMsgs(m => [...m, { id, role: 'assistant', text: withFollowUp(t.error, lang), error: true, retry: message || ' ', detail }]);
     } finally {
       setBusy(false);
       requestAnimationFrame(() => input.current?.focus({ preventScroll: true }));
@@ -235,7 +222,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
     } catch { return { ok: false, reason: 'failed' }; }
   };
   const say = (text: string, quickReplies: QuickReply[] = [], extra: Partial<Msg> = {}) =>
-    setMsgs(m => [...m, { id: uid(), role: 'assistant', text, quickReplies, demo: serverDemoRef.current === true, ...extra }]);
+    setMsgs(m => [...m, { id: uid(), role: 'assistant', text: withFollowUp(text, lang, quickReplies.length ? 'options' : 'general'), quickReplies, demo: serverDemoRef.current === true, ...extra }]);
   const qr = (...titles: string[]) => titles.map(x => ({ title: x, value: x }));
   const phoneText = `\u2066${phone}\u2069`;
 
@@ -255,11 +242,11 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
     if (!r.appointments.length) { say(t.noneFound, qr(t.starters[0], t.tryAnother)); return; }
     say(purpose === 'cancel' ? t.foundCancel : t.foundView, purpose === 'view' ? qr(t.starters[0]) : [], { appts: { purpose, items: r.appointments, key } });
   };
-  const startLookup = (purpose: 'view' | 'cancel', shown: string) => {
+  const startLookup = (purpose: 'view' | 'cancel', shown: string, supplied?: Contact | null) => {
     lastPurpose.current = purpose;
     setMsgs(m => [...m.filter(x => !x.error), { id: uid(), role: 'user', text: shown }]);
     // the same visit already looked up a number or email: use it again
-    if (contact.current) { void showAppointments(purpose, contact.current.value); return; }
+    if (supplied || contact.current) { void showAppointments(purpose, supplied || contact.current!.value); return; }
     setLookup(purpose);
     say(purpose === 'cancel' ? t.askContactCancel : t.askContactView, qr(t.neverMind));
     requestAnimationFrame(() => input.current?.focus({ preventScroll: true }));
@@ -349,9 +336,16 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
     setDraft('');
   };
 
-  const onSubmit = (e: FormEvent) => { e.preventDefault(); if (lookup) submitContact(draft); else void send(draft); };
+  const submitDraft = () => {
+    if (busy || !draft.trim()) return;
+    // Typed menu commands use the same handler as quick-reply buttons.
+    if (chatAction(draft)) { pick(draft, draft); setDraft(''); }
+    else if (lookup) submitContact(draft);
+    else void send(draft);
+  };
+  const onSubmit = (e: FormEvent) => { e.preventDefault(); submitDraft(); };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (lookup) submitContact(draft); else void send(draft); }
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submitDraft(); }
   };
   // grow the text box with its content, up to five lines
   useEffect(() => {
@@ -367,10 +361,10 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
   // the menu buttons (the welcome's, or the same ones from the assistant) work here, without a message:
   // Book opens the booking panel; View and Cancel ask for the number or email; "Never mind" leaves that
   const pick = (value: string, title: string) => {
-    const a = actionOf(title);
+    const a = chatAction(value) || chatAction(title);
     if (a !== 'never') setLookup(null);
     if (a === 'book') setPanel({});
-    else if (a === 'view' || a === 'cancel') startLookup(a, title);
+    else if (a === 'view' || a === 'cancel') startLookup(a, title, readContact(value));
     else if (a === 'another') { contact.current = null; startLookup(lastPurpose.current, title); }
     else if (a === 'never') {
       setLookup(null);
@@ -466,7 +460,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
             <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
               {/* messages */}
               <div ref={scroller} className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-5" aria-live="polite" aria-relevant="additions">
-                <Bubble role="assistant">{t.welcome}</Bubble>
+                <Bubble role="assistant">{withFollowUp(t.welcome, lang, 'options')}</Bubble>
                 {msgs.length === 0 && (
                   <QuickReplies items={t.starters.map(s => ({ title: s, value: s }))} onPick={pick} disabled={busy} />
                 )}

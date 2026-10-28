@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { cleanResponse, type ChatRequest, type DemoState, type HistoryItem } from '@/lib/chat-types';
 import { demoReply } from '@/lib/demo';
+import { continueChat } from '@/lib/chat-follow-up';
 import { chat } from '@/lib/server/chat';
 import { appMode, deadline, safeError } from '@/lib/server/config';
 import { readJson } from '@/lib/server/http';
@@ -78,14 +79,14 @@ export async function POST(req: NextRequest) {
 
   if (appMode() === 'demo') {
     await new Promise(r => setTimeout(r, 700 + Math.random() * 600)); // feels like a real reply
-    return NextResponse.json(demoReply(body));
+    return NextResponse.json(continueChat(demoReply(body)));
   }
 
   try {
     const key = req.headers.get('idempotency-key') || randomUUID();
     if (!/^[\w-]{16,120}$/.test(key)) return fail(400, 'bad_idempotency_key');
     const data = await chat(body, `${body.sessionId}:${key}`, deadline(180_000, req.signal));
-    return NextResponse.json(cleanResponse(data));
+    return NextResponse.json(continueChat(cleanResponse(data)));
   } catch (error) {
     const detail = safeError(error);
     return fail(detail.status, detail.code);

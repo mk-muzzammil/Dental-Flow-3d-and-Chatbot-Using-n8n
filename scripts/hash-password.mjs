@@ -20,6 +20,6 @@ if (process.stdin.isTTY) {
   }
   password = password.replace(/\r?\n$/, '');
 }
-if (password.length < 12 || password.length > 1024) throw new Error('Use a password of 12–1024 characters.');
+if (password.length < 8 || password.length > 1024) throw new Error('Use a password of 8–1024 characters.');
 const salt = randomBytes(16).toString('hex');
 process.stdout.write(`scrypt$${salt}$${scryptSync(password, salt, 64).toString('hex')}\n`);

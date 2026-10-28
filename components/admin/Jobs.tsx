@@ -28,13 +28,14 @@ export type JobView = {
   plan: string;
   mode: string;
   nativeSchedulable: boolean;
+  enabled: boolean;
   lastRun?: RunView;
   lastSuccess?: RunView;
   nextExpected?: string;
 };
 export function Jobs() {
   const { displayTime, timezone } = useClinicTime();
-  const jobData = useAdminData<{ jobs: JobView[] }>('/api/admin/cron/jobs', true);
+  const jobData = useAdminData<{ jobs: JobView[]; appMode: 'demo' | 'live' }>('/api/admin/cron/jobs', true);
   const [query, setQuery] = useState(''),
     [cursor, setCursor] = useState(''),
     [busy, setBusy] = useState(false),
@@ -98,6 +99,18 @@ export function Jobs() {
       <p className="muted">
         Native and manual invocations use the same handler. Times display in {timezone}.
       </p>
+      <p className="muted">
+        All registered website jobs appear below. For local testing, keep Scheduling state on Manual only
+        and use Run now. Booking confirmations and cancellations run immediately when requested; they are
+        not scheduled jobs.
+      </p>
+      {jobData.data?.appMode === 'demo' ? (
+        <p role="status" className="notice">
+          Demo mode is active. Jobs are listed, but running cleanup requires APP_MODE=live and a server
+          restart. A live run updates the selected Google Sheet and calendars and may send expiry emails.
+        </p>
+      ) : null}
+      {!jobData.data && !jobData.error ? <p>Loading registered jobs…</p> : null}
       {jobData.error || history.error ? (
         <p role="alert" className="error">
           {jobData.error || history.error}
@@ -113,7 +126,7 @@ export function Jobs() {
           <dl className="facts">
             <div>
               <dt>Intended schedule</dt>
-              <dd>Every 10 minutes · {job.timezone}</dd>
+              <dd>{job.cron === '*/10 * * * *' ? 'Every 10 minutes' : job.cron} · {job.timezone}</dd>
             </div>
             <div>
               <dt>Hosting plan</dt>
@@ -135,7 +148,7 @@ export function Jobs() {
             </div>
           </dl>
           <div className="actions">
-            <button disabled={busy} onClick={() => void run(job.id)}>
+            <button disabled={busy || !job.enabled || jobData.data?.appMode !== 'live'} onClick={() => void run(job.id)}>
               {busy ? 'Working…' : 'Run now'}
             </button>
             <label>
@@ -170,7 +183,7 @@ export function Jobs() {
             Job
             <select name="job">
               <option value="">All jobs</option>
-              <option value="release-expired-holds">Release expired holds</option>
+              {jobData.data?.jobs.map((job) => <option key={job.id} value={job.id}>{job.name}</option>)}
             </select>
           </label>
           <label>

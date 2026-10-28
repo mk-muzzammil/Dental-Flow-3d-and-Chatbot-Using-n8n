@@ -49,7 +49,7 @@ export async function checkIntegration(signal?: AbortSignal) {
       checks.push({
         name: `Calendar: ${d.name}`,
         ok: DF.busyFor(busy, d.calendarId, day, tz, asked).ok,
-        detail: 'Calendar free/busy access',
+        detail: `${d.implicit ? 'Fallback calendar' : `Doctor ${d.id}, from Doctors column C`}: ${d.calendarId}. Checks availability access; confirm event-write access with a test booking.`,
       }),
     );
   } catch (error) {
