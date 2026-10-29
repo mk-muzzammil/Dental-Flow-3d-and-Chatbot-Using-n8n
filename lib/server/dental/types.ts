@@ -9,31 +9,6 @@ export type Doctor = {
   active: boolean;
   implicit?: boolean;
 };
-export type SlotConfig = {
-  CALENDAR_ID: string;
-  CLINIC_NAME: string;
-  service: string;
-  doctor: string;
-  date: string;
-  listOnly: boolean;
-  next: boolean;
-  lang: string;
-  NEXT_DAYS: number;
-};
-export type DoctorChoice = {
-  answerNow?: boolean;
-  response?: SlotResult;
-  eligible: Doctor[];
-  freeBusyItems: { id: string }[];
-};
-export type SlotResult = {
-  reason?: string;
-  doctors?: { id: string; name: string; services?: string[] }[];
-  slots?: string[];
-  byDoctor?: { doctor: string; doctorName: string; slots: string[] }[];
-  options?: { date: string; time: string; doctor: string; doctorName: string; label: string }[];
-  [key: string]: unknown;
-};
 export type BookingInput = {
   service: string;
   date: string;
@@ -45,6 +20,7 @@ export type BookingInput = {
   doctor: string;
   language: string;
   firstVisit?: boolean;
+  version?: string;
 };
 export type HoldInput = BookingInput & {
   ref: string;
@@ -53,6 +29,7 @@ export type HoldInput = BookingInput & {
   CLINIC_NAME: string;
 };
 export type Hold = HoldInput & {
+  startsAt: string; endsAt: string; endTime: string;
   free: boolean;
   reason: string;
   event: GoogleEvent & Record<string, unknown>;

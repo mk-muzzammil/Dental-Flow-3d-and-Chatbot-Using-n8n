@@ -43,10 +43,10 @@ export async function GET(request: NextRequest) {
       );
     else if (action === 'confirm') {
       const result = await confirmBooking(ref, token, signal);
-      html = confirmation(result.booking, result.event).page;
+      html = (await confirmation(result.booking, result.event)).page;
     } else {
       await cancelBooking(ref, { token }, signal);
-      html = cancelledPage(b);
+      html = await cancelledPage(b);
     }
   } catch (error) {
     const detail = safeError(error);

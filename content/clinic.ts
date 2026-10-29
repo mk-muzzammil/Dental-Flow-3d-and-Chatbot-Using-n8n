@@ -1,13 +1,4 @@
-/**
- * THE CLINIC'S OWN DETAILS, shown on the website.
- *
- * Edit this file for each clinic. The chat assistant does not read it: it
- * reads the clinic's Google Sheet (Settings, Services, Doctors, FAQ tabs),
- * so keep the two in step. Prices and dentists
- * here are what visitors see before they open the chat.
- *
- * Every text has three versions: en (English), ur (Urdu), ar (Arabic).
- */
+/** Demo clinic content and 3D appearance. Live clinic data is edited in Admin → Clinic management. */
 import type { Lang } from '@/lib/i18n';
 import type { ToothLook } from '@/components/three/look';
 
@@ -25,9 +16,9 @@ export const clinic = {
   mapUrl: 'https://maps.google.com/?q=12+Main+Boulevard+Lahore',
   currency: 'PKR',
   hours: [
-    { day: { en: 'Monday to Thursday', ur: 'پیر تا جمعرات', ar: 'الاثنين إلى الخميس' } as T, time: '10:00 – 20:00' },
-    { day: { en: 'Friday', ur: 'جمعہ', ar: 'الجمعة' } as T, time: '10:00 – 12:30 · 14:30 – 20:00' },
-    { day: { en: 'Saturday', ur: 'ہفتہ', ar: 'السبت' } as T, time: '10:00 – 16:00' },
+    { day: { en: 'Monday to Thursday', ur: 'پیر تا جمعرات', ar: 'الاثنين إلى الخميس' } as T, time: '10:00 – 19:00' },
+    { day: { en: 'Friday', ur: 'جمعہ', ar: 'الجمعة' } as T, time: '10:00 – 19:00' },
+    { day: { en: 'Saturday', ur: 'ہفتہ', ar: 'السبت' } as T, time: '10:00 – 19:00' },
     { day: { en: 'Sunday', ur: 'اتوار', ar: 'الأحد' } as T, time: '' },
   ],
 };
@@ -50,16 +41,16 @@ export const services: Service[] = [
   { id: 'checkup', minutes: 30, price: 1500,
     name: { en: 'Check-up & Consultation', ur: 'چیک اپ اور مشورہ', ar: 'فحص واستشارة' },
     blurb: { en: 'A full examination, and a clear plan if anything needs attention.', ur: 'مکمل معائنہ، اور اگر کسی علاج کی ضرورت ہو تو واضح منصوبہ۔', ar: 'فحص شامل، وخطة واضحة إذا احتاج شيء إلى علاج.' } },
-  { id: 'cleaning', minutes: 45, price: 4000,
+  { id: 'cleaning', minutes: 60, price: 4000,
     name: { en: 'Scaling & Polishing', ur: 'سکیلنگ اور پالش', ar: 'تنظيف وتلميع الأسنان' },
     blurb: { en: 'Removes the build-up that brushing cannot reach.', ur: 'وہ میل صاف کرتی ہے جو برش سے نہیں نکلتا۔', ar: 'إزالة الترسبات التي لا تصل إليها الفرشاة.' } },
-  { id: 'filling', minutes: 45, price: 5000,
+  { id: 'filling', minutes: 60, price: 5000,
     name: { en: 'Cavity Filling', ur: 'کیویٹی فلنگ', ar: 'حشو الأسنان' },
     blurb: { en: 'Tooth-coloured materials, matched to your tooth.', ur: 'دانت کے رنگ کا میٹیریل، آپ کے دانت سے ملتا ہوا۔', ar: 'مواد بلون الأسنان تتطابق مع سنّك.' } },
   { id: 'rct', minutes: 90, price: 18000,
     name: { en: 'Root Canal Treatment', ur: 'روٹ کینال ٹریٹمنٹ', ar: 'علاج عصب الأسنان' },
     blurb: { en: 'By a specialist who explains every step first.', ur: 'اسپیشلسٹ کے ہاتھوں، جو ہر مرحلہ پہلے سمجھاتے ہیں۔', ar: 'على يد أخصائي يشرح كل خطوة قبل البدء.' } },
-  { id: 'extract', minutes: 45, price: 6000,
+  { id: 'extract', minutes: 60, price: 6000,
     name: { en: 'Tooth Extraction', ur: 'دانت نکلوانا', ar: 'خلع الأسنان' },
     blurb: { en: 'Gentle, careful and properly numbed.', ur: 'نرمی اور احتیاط کے ساتھ، مکمل سُن کر کے۔', ar: 'بلطف وعناية، وبتخدير كامل.' } },
   { id: 'whiten', minutes: 60, price: 15000,

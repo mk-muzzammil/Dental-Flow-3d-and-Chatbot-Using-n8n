@@ -2,6 +2,7 @@ import 'server-only';
 import { accessToken, connectionStatus } from './oauth';
 import { settings } from './settings';
 import { AppError, deadline } from '../config';
+import { storageProfile } from '../storage/profile';
 export type Row = (string | number | boolean)[];
 export type GoogleEvent = {
   id: string;
@@ -21,6 +22,9 @@ export async function googleRequest<T>(
   path: string,
   options: { method?: string; body?: unknown; signal?: AbortSignal; deletedOK?: boolean } = {},
 ): Promise<T> {
+  // Keep external mutations paused while the selected workbook is migrated.
+  if (options.method && options.method !== 'GET' && service !== 'sheets' && path !== '/freeBusy')
+    await storageProfile((await settings()).sheetId);
   const host = {
     sheets: 'https://sheets.googleapis.com/v4',
     calendar: 'https://www.googleapis.com/calendar/v3',

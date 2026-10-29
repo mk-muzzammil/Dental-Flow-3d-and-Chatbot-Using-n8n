@@ -13,13 +13,20 @@
     "cron:check": "node scripts/cron-config.mjs check",
     "cron:select": "node scripts/cron-config.mjs select",
     "db:init": "node --conditions=react-server --import tsx scripts/init-db.ts",
-    "admin:hash": "node scripts/hash-password.mjs"
+    "admin:hash": "node scripts/hash-password.mjs",
+    "sheet:migrate": "node --conditions=react-server --import tsx scripts/migrate-web-sheet.ts",
+    "test:clinic": "node --conditions=react-server --import tsx tests/clinic.integration.mjs",
+    "test:availability": "node --import tsx --test tests/availability.test.ts",
+    "slots:migrate": "node --conditions=react-server --import tsx scripts/migrate-availability.ts",
+    "test:booking-ui": "playwright test",
+    "test:framing": "node --import tsx tests/mouth-framing.mjs"
   },
   "dependencies": {
     "@fontsource-variable/manrope": "5.3.0",
     "@fontsource/ibm-plex-sans-arabic": "5.3.0",
     "@fontsource/noto-nastaliq-urdu": "5.3.0",
     "@google/genai": "^2.31.0",
+    "@js-temporal/polyfill": "^0.5.1",
     "@react-three/drei": "10.7.9",
     "@react-three/fiber": "9.8.1",
     "cron-parser": "^5.10.2",
@@ -34,6 +41,7 @@
     "three": "0.186.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",

@@ -1,5 +1,6 @@
 /** The sections after the 3D opening (rendered on the server; only the small animated parts run in the browser). */
-import { clinic, dentists, faq, services, tooth3d } from '@/content/clinic';
+import { tooth3d } from '@/content/clinic';
+import { publicClinic } from '@/lib/server/storage/public-clinic';
 import { fill, type Dict, type Lang } from '@/lib/i18n';
 import { minutes, money } from '@/lib/format';
 import { Arrow, LogoMark, OpenChatButton, Reveal } from './ui';
@@ -17,7 +18,8 @@ function Head({ n, eyebrow, title, aside }: { n: string; eyebrow: string; title:
   );
 }
 
-export function Treatments({ lang, t }: { lang: Lang; t: Dict }) {
+export async function Treatments({ lang, t }: { lang: Lang; t: Dict }) {
+  const { clinic, services } = await publicClinic();
   return (
     <section id="treatments" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-24 sm:py-32">
       <Head n="01" eyebrow={t.treatments.eyebrow} title={t.treatments.title}
@@ -46,7 +48,8 @@ export function Treatments({ lang, t }: { lang: Lang; t: Dict }) {
   );
 }
 
-export function Dentists({ lang, t }: { lang: Lang; t: Dict }) {
+export async function Dentists({ lang, t }: { lang: Lang; t: Dict }) {
+  const { dentists } = await publicClinic();
   return (
     <section id="dentists" className="scroll-mt-24 bg-mist py-24 sm:py-32">
       <div className="mx-auto max-w-6xl px-5">
@@ -95,7 +98,8 @@ export function How({ t }: { t: Dict }) {
   );
 }
 
-export function Visit({ lang, t }: { lang: Lang; t: Dict }) {
+export async function Visit({ lang, t }: { lang: Lang; t: Dict }) {
+  const { clinic } = await publicClinic();
   return (
     <section id="visit" className="mx-auto max-w-6xl scroll-mt-24 px-5 pb-24 sm:pb-32">
       <Head n="04" eyebrow={t.visit.eyebrow} title={t.visit.title} />
@@ -143,7 +147,8 @@ export function Visit({ lang, t }: { lang: Lang; t: Dict }) {
   );
 }
 
-export function Faq({ lang, t }: { lang: Lang; t: Dict }) {
+export async function Faq({ lang, t }: { lang: Lang; t: Dict }) {
+  const { faq } = await publicClinic();
   return (
     <section id="faq" className="mx-auto max-w-6xl scroll-mt-24 px-5 pb-24 sm:pb-32">
       <div className="grid gap-12 md:grid-cols-[1fr_1.4fr]">
@@ -186,7 +191,8 @@ export function CallToAction({ t }: { t: Dict }) {
   );
 }
 
-export function Footer({ lang, t }: { lang: Lang; t: Dict }) {
+export async function Footer({ lang, t }: { lang: Lang; t: Dict }) {
+  const { clinic } = await publicClinic();
   return (
     <footer>
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-10 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">

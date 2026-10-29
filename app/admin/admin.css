@@ -352,3 +352,26 @@ summary {
     display: block;
   }
 }
+/* Clinic editor: consistent, keyboard-accessible controls in both color schemes. */
+:root { --brand: #2563eb; --surface: #fff; --ink: #172b4d; --muted: #52647d; }
+.clinic-tabs { display:flex;flex-wrap:wrap;gap:8px;margin:24px 0; }
+.clinic-tabs button {font-size:13px;padding:9px 13px;}
+.form-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px;}
+.form-grid label {min-width:0;}
+textarea {font:inherit;width:100%;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);resize:vertical;}
+textarea:focus-visible {outline:3px solid #3b82f6;outline-offset:3px;}
+.record-editor {margin-top:24px;border-top:1px solid var(--line);padding-top:24px;}
+.record-editor fieldset {border:1px solid var(--line);border-radius:8px;margin:20px 0;padding:16px;}
+.choice-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.check-label {display:flex;align-items:center;gap:10px;margin:6px 0;font-weight:400;}
+.check-label input {width:18px;height:18px;flex:none;}
+.save-bar {position:sticky;bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px #172b4d18;}
+.save-bar span {margin-right:auto;font-size:13px;}
+.admin-frame nav a[aria-current] {background:#e8efff;color:#1e40af;}
+@media(prefers-color-scheme:dark){
+ :root {color-scheme:dark;--surface:#152238;--ink:#e6edf7;--muted:#adbed5;--line:#34465f;--brand:#3679ed;}
+ body{background:#0c1627;} .card,.admin-header,.login,button.secondary,input,select{background:var(--surface);color:var(--ink);}
+ .notice{background:#1d3656;} .badge{background:#273a55;} .admin-frame nav a[aria-current]{background:#203c68;color:#d7e6ff;}
+ td,th{border-color:var(--line);} a{color:#8db8ff;}
+}
+@media(max-width:700px){.form-grid,.choice-grid{grid-template-columns:1fr;}.card-heading{flex-wrap:wrap;}.save-bar{bottom:0;}}

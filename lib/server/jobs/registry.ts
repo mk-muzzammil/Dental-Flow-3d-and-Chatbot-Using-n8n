@@ -5,7 +5,7 @@ import { expireBooking } from '../dental/actions';
 import { collection } from '../db';
 import { decrypt } from '../security';
 import { type Operation } from '../operations/journal';
-import { checkSignal, safeError } from '../config';
+import { safeError } from '../config';
 export type Counters = { processed: number; succeeded: number; failed: number; skipped: number };
 export type JobResult = Counters & { errors: { code: string; item: string }[]; unfinished: boolean };
 export async function releaseExpiredHolds(signal: AbortSignal, stopAt: number): Promise<JobResult> {

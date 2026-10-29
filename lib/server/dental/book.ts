@@ -6,16 +6,16 @@ import {
   createEvent,
   listEvents,
   deleteEvent,
-  appendAppointment,
-  freeBusy,
   type GoogleEvent,
   type Row,
 } from '../google/api';
 import { operate } from '../operations/journal';
-import { readClinic, busyWindow } from './clinic';
-import { DF } from './rules';
+import { availabilityContext } from './clinic';
+import { withLease } from '../operations/lease';
+import { reserve,releaseReservation } from './reservations';
+import { Temporal } from '@js-temporal/polyfill';
 import { checkAvailability } from './checkAvailability';
-import { findBooking, upcomingCount, identity, fromRow, when } from './appointments';
+import { findBooking, upcomingCount, identity, fromRow, when, appendBooking } from './appointments';
 import { confirmBooking } from './actions';
 import type { BookingInput, Hold } from './types';
 export function validateBooking(raw: Record<string, unknown>): BookingInput {
@@ -46,6 +46,8 @@ export function validateBooking(raw: Record<string, unknown>): BookingInput {
     time = clean(raw.time);
   if (!service || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time))
     throw new AppError('bad-request', 400);
+  try{Temporal.PlainDate.from(date);}catch{throw new AppError('invalid-date-time',400);}
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))throw new AppError('invalid-date-time',400);
   return {
     name,
     phone,
@@ -59,6 +61,7 @@ export function validateBooking(raw: Record<string, unknown>): BookingInput {
     doctor: clean(raw.doctor) || 'any',
     language: clean(raw.language) || 'en',
     firstVisit: raw.firstVisit === true,
+    version:typeof raw.version==='string'?raw.version:undefined,
   };
 }
 export function losesClash(ours: GoogleEvent, events: GoogleEvent[]) {
@@ -98,13 +101,14 @@ export function appointmentRow(h: Hold, eventId: string, createdAt: string): Row
     '',
     h.doctorId,
     h.doctorName,
-    h.calendarId,
+    h.calendarId, h.startsAt,h.endsAt,h.timezone,h.endTime,
   ];
 }
 export async function createBooking(raw: Record<string, unknown>, requestKey: string, signal?: AbortSignal) {
   const input = validateBooking(raw),
     fingerprint = secretHash(JSON.stringify(input));
-  return operate(
+  const selectedClinic=await settings();
+  return withLease(`clinic-settings:${selectedClinic.sheetId}`,()=>operate(
     'book',
     requestKey,
     fingerprint,
@@ -124,23 +128,9 @@ export async function createBooking(raw: Record<string, unknown>, requestKey: st
             reason: 'too-many',
             message: `This number already has ${count} upcoming appointments. Kindly give the clinic's phone number, ${clinicDefaults().CLINIC_PHONE}, to arrange more.`,
           };
-        const [data, selected] = await Promise.all([readClinic(signal), settings()]);
-        const docs = DF.eligible(
-          DF.doctors(
-            data[4],
-            selected.calendarId,
-            DF.settings(data[2]).clinic_name || clinicDefaults().CLINIC_NAME,
-          ),
-          input.service,
-          input.doctor,
-        );
-        const choices = {
-          eligible: docs,
-          freeBusyItems: (docs.length ? docs : [{ calendarId: selected.calendarId }]).map((d) => ({
-            id: d.calendarId,
-          })),
-        };
-        const busy = await freeBusy({ ...busyWindow(input.date), items: choices.freeBusyItems }, signal);
+        const {data,docs,busy}=await availabilityContext(input.service,input.doctor,signal);
+        const selected=selectedClinic;
+        const choices={eligible:docs};
         const hold = checkAvailability(
           {
             ...input,
@@ -177,9 +167,16 @@ export async function createBooking(raw: Record<string, unknown>, requestKey: st
         const found = events.find((e) => e.status !== 'cancelled');
         return found ? { found: true as const, value: found } : { found: false as const };
       };
+      const reservationId=identity(fromRow(appointmentRow(h,eventId,createdAt),h.calendarId));
+      await reserve(h.calendarId,h.date,{id:reservationId,start:Date.parse(h.startsAt),end:Date.parse(h.endsAt)});
       const event = await journal.step<GoogleEvent>(
         'createCalendar',
         async () => {
+          const recovered=await reconcile();
+          if(recovered.found)return recovered.value;
+          const fresh=await availabilityContext(input.service,input.doctor,signal,reservationId);
+          const validated=checkAvailability({...h,version:input.version},fresh.data,{eligible:fresh.docs},fresh.busy);
+          if(!validated.free || validated.startsAt!==h.startsAt || validated.endsAt!==h.endsAt){await releaseReservation(reservationId);throw new AppError(validated.reason==='ok'?'configuration-changed':validated.reason,409);}
           try {
             return await createEvent(h.calendarId, { ...h.event, id: eventId }, signal);
           } catch (error) {
@@ -193,7 +190,7 @@ export async function createBooking(raw: Record<string, unknown>, requestKey: st
       const b = fromRow(appointmentRow(h, event.id, createdAt), h.calendarId);
       await journal.setIdentity(identity(b), b.reference);
       const clash = await journal.step('clash', async () => {
-        // Preserve workflow 02's winner ordering and its fail-open clash-read behavior.
+        // External Calendar editors do not share our MongoDB reservation; fail closed on reconciliation errors.
         const events = await listEvents(
           h.calendarId,
           new URLSearchParams({
@@ -203,14 +200,12 @@ export async function createBooking(raw: Record<string, unknown>, requestKey: st
             maxResults: '50',
           }),
           signal,
-        ).catch(() => {
-          checkSignal(signal);
-          return [];
-        });
+        );
         return losesClash(event, events);
       });
       if (clash) {
         await journal.step('withdraw', () => deleteEvent(h.calendarId, event.id, signal));
+        await releaseReservation(reservationId);
         return {
           ok: false,
           reason: 'slot-taken',
@@ -222,7 +217,7 @@ export async function createBooking(raw: Record<string, unknown>, requestKey: st
         async () => {
           const existing = await findBooking(h.ref, h.token, signal);
           if (existing) return true;
-          await appendAppointment(appointmentRow(h, event.id, createdAt), signal);
+          await appendBooking(appointmentRow(h, event.id, createdAt), signal);
           return true;
         },
         async () =>
@@ -239,11 +234,12 @@ export async function createBooking(raw: Record<string, unknown>, requestKey: st
         service: h.serviceName,
         dentist: h.doctorName,
         when: when(b),
+        date:h.date,time:h.time,endTime:h.endTime,startsAt:h.startsAt,endsAt:h.endsAt,
         whatsappSent: false,
         emailCopy: confirmed.emailCopy,
         next: 'Tell the visitor their appointment is confirmed. Show the reference and appointment details.',
       };
     },
     signal,
-  );
+  ),{signal});
 }

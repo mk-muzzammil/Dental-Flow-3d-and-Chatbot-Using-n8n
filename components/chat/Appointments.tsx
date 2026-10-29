@@ -7,17 +7,14 @@
  */
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { services } from '@/content/clinic';
+import { useClinic } from '@/components/ClinicProvider';
 import type { Appointment } from '@/lib/appointments';
 import { LOCALE } from '@/lib/format';
 import type { Dict, Lang } from '@/lib/i18n';
 import { clock, dayTitle } from '@/lib/slots';
 
 /** the sheet keeps English treatment names: show the visitor's language when we know the treatment */
-const localService = (name: string, lang: Lang) =>
-  services.find(s => s.name.en.toLowerCase() === name.trim().toLowerCase())?.name[lang] ?? name;
-
-export function AppointmentCards({ items, purpose, lang, t, canCancel, onCancel }: {
+export function AppointmentCards({ items, purpose, lang, t, canCancel, onCancel, onReschedule }: {
   items: Appointment[];
   purpose: 'view' | 'cancel';
   lang: Lang;
@@ -25,21 +22,24 @@ export function AppointmentCards({ items, purpose, lang, t, canCancel, onCancel 
   /** false once the chat was reloaded: the number or email is not kept, so it must be looked up again */
   canCancel: boolean;
   onCancel: (reference: string) => Promise<boolean>;
+  onReschedule?: (appointment:Appointment)=>void;
 }) {
   return (
     <motion.ul initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="ms-10 space-y-2.5" aria-label={t.yourAppointments}>
       {items.map((a, i) => (
         <motion.li key={a.reference} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 * i }}>
-          <Card a={a} lang={lang} t={t} showCancel={canCancel && a.status !== 'cancelled'} prominent={purpose === 'cancel'} onCancel={onCancel} />
+          <Card a={a} lang={lang} t={t} showCancel={canCancel && a.status !== 'cancelled'} prominent={purpose === 'cancel'} onCancel={onCancel} onReschedule={onReschedule} />
         </motion.li>
       ))}
     </motion.ul>
   );
 }
 
-function Card({ a, lang, t, showCancel, prominent, onCancel }: {
-  a: Appointment; lang: Lang; t: Dict['chat']; showCancel: boolean; prominent: boolean; onCancel: (reference: string) => Promise<boolean>;
+function Card({ a, lang, t, showCancel, prominent, onCancel, onReschedule }: {
+  a: Appointment; lang: Lang; t: Dict['chat']; showCancel: boolean; prominent: boolean; onReschedule?:(appointment:Appointment)=>void; onCancel: (reference: string) => Promise<boolean>;
 }) {
+  const { services } = useClinic();
+  const localService = (name: string, lang: Lang) => services.find(s => s.name.en.toLowerCase() === name.trim().toLowerCase())?.name[lang] ?? name;
   const [step, setStep] = useState<'idle' | 'confirm' | 'busy'>('idle');
   const gone = a.status === 'cancelled';
   const d = new Date(a.date + 'T12:00:00Z');
@@ -74,6 +74,7 @@ function Card({ a, lang, t, showCancel, prominent, onCancel }: {
         </div>
       </div>
 
+      {showCancel && !gone && onReschedule && <button type="button" className="min-h-11 w-full border-t border-line px-3 py-2 text-sm font-semibold text-brand" onClick={()=>onReschedule(a)}>{lang==='ur'?'وقت تبدیل کریں':'Change appointment time'}</button>}
       {showCancel && !gone && (
         <AnimatePresence mode="wait" initial={false}>
           {step === 'idle' ? (

@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'tests/browser',timeout:90000,workers:1,use:{baseURL:'http://localhost:3000',headless:true,reducedMotion:'reduce',launchOptions:{...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),args:['--no-sandbox']},screenshot:'only-on-failure'},webServer:{command:'APP_MODE=demo npm run dev',url:'http://localhost:3000',reuseExistingServer:true,timeout:120000}});

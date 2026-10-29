@@ -31,7 +31,7 @@ import { readContact, type Appointment, type AppointmentsAnswer, type Contact } 
 import { AppointmentCards } from './Appointments';
 import { OPEN_CHAT_EVENT, type OpenChatDetail } from '../sections/ui';
 import { Avatar, BookingCard, Carousel as CarouselView, QuickReplies, RichText, Typing } from './parts';
-import { BookingPanel, requestMessage, type BookingRequest, type PanelStart } from './BookingPanel';
+import { BookingPanel, type BookingRequest, type PanelStart } from './BookingPanel';
 import { MAX_SECONDS, useVoice } from './useVoice';
 import { clock, dayTitle } from '@/lib/slots';
 
@@ -203,9 +203,11 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
 
   // the booking panel
   const [panel, setPanel] = useState<PanelStart | null>(null);
-  const confirmBooking = (r: BookingRequest) => {
+  const confirmBooking = (r: BookingRequest,result:Booking&{demo?:boolean;endTime?:string;minutes?:number}) => {
+    const moving=panel?.reschedule;
+    if(moving)setMsgs(previous=>previous.map(m=>m.appts?{...m,appts:{...m.appts,items:m.appts.items.map(a=>a.reference===moving.reference?{...a,date:r.date,time:r.time,endTime:result.endTime,minutes:result.minutes ?? a.minutes}:a)}}:m));
     setPanel(null);
-    void send(requestMessage(r), t.bookingRequest, { request: r });
+    setMsgs(previous=>[...previous,{id:uid(),role:'user',text:t.bookingRequest,request:r},{id:uid(),role:'assistant',text:withFollowUp(lang==='ur'?'آپ کی اپائنٹمنٹ کی تصدیق ہوگئی ہے۔':'Your appointment is confirmed.',lang),booking:result,demo:result.demo}]);
   };
 
   // "View My Appointments" / "Cancel an Appointment": handled here, never by the assistant
@@ -489,7 +491,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
                   {m.carousel && <CarouselView data={m.carousel} onPick={pick} disabled={busy || m !== last} hint={t.scrollHint} />}
                   {m.appts && m.appts.items.length > 0 && (
                     <AppointmentCards items={m.appts.items} purpose={m.appts.purpose} lang={lang} t={t}
-                      canCancel={contact.current?.key === m.appts.key} onCancel={ref => cancelAppointment(m.appts!.key, ref)} />
+                      canCancel={contact.current?.key === m.appts.key} onCancel={ref => cancelAppointment(m.appts!.key, ref)} onReschedule={a=>{if(contact.current&&contact.current.key===m.appts!.key&&a.serviceId)setPanel({service:a.serviceId,dentist:a.doctorId,reschedule:{reference:a.reference,contact:contact.current.value}});}} />
                   )}
                   {m.quickReplies && m.quickReplies.length > 0 && m === last && <QuickReplies items={m.quickReplies} onPick={pick} disabled={busy} />}
                   {m.booking && <BookingCard b={m.booking} t={t} demo={m.demo} />}

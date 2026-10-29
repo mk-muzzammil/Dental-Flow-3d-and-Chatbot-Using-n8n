@@ -15,8 +15,11 @@ export async function database(): Promise<Db> {
       maxPoolSize: 5,
       minPoolSize: 0,
       maxIdleTimeMS: 60_000,
-      serverSelectionTimeoutMS: 5_000,
-      waitQueueTimeoutMS: 5_000,
+      // Atlas DNS/TLS warm-up on local networks can exceed five seconds.
+      // Keep waits bounded without growing the per-instance connection pool.
+      connectTimeoutMS: 10_000,
+      serverSelectionTimeoutMS: 15_000,
+      waitQueueTimeoutMS: 10_000,
     });
     const promise = client.connect().catch((error) => {
       state.dentalMongo = undefined;
@@ -45,7 +48,10 @@ export async function initializeDatabase() {
         'cron_slots',
         'audit_events',
         'operation_journal',
+        'migration_backups',
       ].map((name) => db.collection(name).createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })),
+      db.collection('booking_reservations').createIndex({calendarId:1,date:1}),
+      db.collection('booking_private').createIndex({ sheetId: 1, bookingId: 1 }, { unique: true }),
       db.collection('execution_leases').createIndex({ until: 1 }, { expireAfterSeconds: 0 }),
       db.collection('cron_runs').createIndex({ jobId: 1, startedAt: -1, _id: -1 }),
       db.collection('cron_runs').createIndex({ status: 1, startedAt: -1 }),

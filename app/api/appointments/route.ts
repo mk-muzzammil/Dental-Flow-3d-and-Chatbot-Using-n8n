@@ -41,7 +41,6 @@ export async function POST(req: NextRequest) {
   if (!contact) return fail(400, 'invalid-contact');
   const reference = typeof b.reference === 'string' ? b.reference.trim().toUpperCase().slice(0, 20) : '';
   if (action === 'cancel' && !/^DN-?[A-Z0-9]{3,12}$/.test(reference)) return fail(400, 'invalid-reference');
-  const lang = typeof b.lang === 'string' && /^(en|ur|ar)$/.test(b.lang) ? b.lang : 'en';
 
   const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || req.headers.get('x-real-ip') || 'local';
   if (action === 'list' ? limited('l:' + ip, 8, 40) : limited('c:' + ip, 6, 30)) return fail(429, 'too-many');

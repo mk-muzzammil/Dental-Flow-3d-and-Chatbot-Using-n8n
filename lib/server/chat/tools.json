@@ -1,7 +1,7 @@
 [
   {
     "name": "get_next_slots",
-    "description": "The next free appointment times for ONE treatment over the coming week: up to 8, each with a ready-made label, its date, its time and the dentist who is free then. Call it to offer times as soon as you know the treatment. Never guess times.",
+    "description": "Returns the current clinic-local Monday\u2013Sunday week with disabled days and reasons for a service. Ask the visitor to choose an available day, then use get_available_slots for that day. Never roll into next week automatically.",
     "parametersJsonSchema": {
       "type": "object",
       "properties": {
@@ -126,6 +126,10 @@
         "language": {
           "type": "string",
           "description": "The language the visitor is writing in: en, ur (Urdu script), roman-ur, or ar"
+        },
+        "version": {
+          "type": "string",
+          "description": "Exact configuration version returned by the availability tool used for the summary. Re-fetch times and ask confirmation again if it changes."
         }
       },
       "required": [
@@ -137,7 +141,8 @@
         "phone",
         "email",
         "notes",
-        "language"
+        "language",
+        "version"
       ],
       "additionalProperties": false
     }

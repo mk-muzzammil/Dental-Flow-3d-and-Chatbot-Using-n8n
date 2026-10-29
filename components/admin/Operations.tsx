@@ -11,7 +11,7 @@ type RecordView = {
   reference?: string;
 };
 export function Operations() {
-  const { displayTime, timezone } = useClinicTime();
+  const { displayTime } = useClinicTime();
   const { data, error } = useAdminData<{ operations: RecordView[] }>('/api/admin/operations', true);
   return (
     <>

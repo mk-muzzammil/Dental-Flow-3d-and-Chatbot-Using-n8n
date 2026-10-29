@@ -1,258 +1,529 @@
-'use client';
-/**
- * THE BOOKING PANEL, inside the chat window.
- *   Treatment → Dentist → Time → Details → Confirm
- * Each step is a list from top to bottom. Choosing a dentist shows their free
- * times straight away (read from the clinic's diary through /api/slots, no
- * chat message). Only "Confirm" sends anything: one message with everything,
- * which the assistant books at once.
- */
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { clinic, dentists, services } from '@/content/clinic';
-import type { Dict, Lang } from '@/lib/i18n';
-import { minutes, money } from '@/lib/format';
-import { clock, dayTitle, nextDays, type DoctorsAnswer, type SlotOption, type SlotsAnswer } from '@/lib/slots';
-
-export type PanelStart = { service?: string; dentist?: string };
-export type BookingRequest = {
-  serviceId: string; serviceName: string; dentistId: string; dentistName: string;
-  date: string; time: string; name: string; phone: string; email: string;
-};
-type Step = 'treatment' | 'dentist' | 'time' | 'days' | 'day' | 'details';
-const ANY = 'any';
-
-/** What the assistant receives when the visitor confirms (it books this straight away). */
-export function requestMessage(r: BookingRequest) {
-  return [
-    'BOOKING FORM: the visitor chose this from the free times and pressed Confirm.',
-    `Treatment: ${r.serviceName} (id ${r.serviceId})`,
-    `Dentist: ${r.dentistName || 'any'} (id ${r.dentistId || ANY})`,
-    `Date: ${r.date} (${dayTitle('en', r.date)})`,
-    `Time: ${r.time} (${clock('en', r.time)})`,
-    `Name: ${r.name}`,
-    `Mobile: ${r.phone}`,
-    `Email: ${r.email}`,
-  ].join('\n');
-}
-
-async function getJSON<T>(url: string): Promise<T> {
-  const r = await fetch(url, { cache: 'no-store' });
-  if (!r.ok) throw new Error(String(r.status));
-  return r.json() as Promise<T>;
-}
-
-function Row({ title, sub, onClick, accent, right }: { title: ReactNode; sub?: ReactNode; onClick: () => void; accent?: boolean; right?: ReactNode }) {
-  return (
-    <button type="button" onClick={onClick}
-      className={`group flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-start ring-1 transition active:scale-[0.99] ${
-        accent ? 'bg-sky/70 ring-brand/30 hover:ring-brand' : 'bg-white ring-line hover:ring-brand/60 hover:shadow-sm'}`}>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[14.5px] font-semibold leading-snug text-ink">{title}</span>
-        {sub && <span className="mt-0.5 block text-xs leading-snug text-muted">{sub}</span>}
-      </span>
-      {right}
-      <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-muted transition group-hover:text-brand rtl:-scale-x-100" aria-hidden="true">
-        <path d="M8 5l5 5-5 5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
-  );
-}
-
-function Loading({ text }: { text: string }) {
-  return (
-    <div className="space-y-2" role="status">
-      <p className="text-xs text-muted">{text}</p>
-      {[0, 1, 2, 3].map(i => <div key={i} className="h-14 animate-pulse rounded-2xl bg-white ring-1 ring-line" style={{ animationDelay: `${i * 120}ms` }} />)}
-    </div>
-  );
-}
-
-export function BookingPanel({ lang, t, minWord, start, onClose, onConfirm }: {
-  lang: Lang; t: Dict['chat']; minWord: string; start: PanelStart; onClose: () => void; onConfirm: (r: BookingRequest) => void;
-}) {
-  const startService = services.find(s => s.id === start.service);
-  const [step, setStep] = useState<Step>(startService ? 'dentist' : 'treatment');
-  const [service, setService] = useState(startService?.id ?? '');
-  const [dentist, setDentist] = useState<{ id: string; name: string } | null>(null);
-  const [doctors, setDoctors] = useState<DoctorsAnswer['doctors'] | null>(null);
-  const [slots, setSlots] = useState<SlotsAnswer | null>(null);
-  const [day, setDay] = useState('');
-  const [pick, setPick] = useState<SlotOption | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', email: '' });
-  const [errors, setErrors] = useState<Partial<Record<'name' | 'phone' | 'email', string>>>({});
-  const [history, setHistory] = useState<Step[]>([]);
-  const [attempt, setAttempt] = useState(0);   // "Try again" after a failed load
-
-  const svc = services.find(s => s.id === service);
-  const go = (next: Step) => { setHistory(h => [...h, step]); setStep(next); setFailed(false); };
-  const back = () => { const h = [...history]; const prev = h.pop(); setHistory(h); if (prev) setStep(prev); else onClose(); };
-
-  // keep the details typed earlier in this visit
-  useEffect(() => {
-    try { const v = JSON.parse(sessionStorage.getItem('df-details') || 'null'); if (v && typeof v === 'object') setForm(f => ({ ...f, ...v })); } catch { /* ignore */ }
-  }, []);
-
-  // step 2: who does this treatment
-  useEffect(() => {
-    if (step !== 'dentist' || !service) return;
-    let live = true;
-    setDoctors(null);
-    getJSON<DoctorsAnswer>(`/api/slots?mode=doctors&service=${encodeURIComponent(service)}`)
-      .then(d => {
-        if (!live) return;
-        const list = d.doctors ?? [];
-        const wanted = list.find(x => x.id === start.dentist);
-        if (wanted || list.length === 1) {               // a dentist asked for, or the only one: straight to the times
-          const only = wanted ?? list[0];
-          setDentist(only); setStep('time'); return;
-        }
-        if (list.length === 0) { setDentist({ id: ANY, name: '' }); setStep('time'); return; }
-        setDoctors(list);
-      })
-      .catch(() => live && setFailed(true));
-    return () => { live = false; };
-  }, [step, service, start.dentist, attempt]);
-
-  // step 3: their next free times, or every free time on one day
-  useEffect(() => {
-    if ((step !== 'time' && step !== 'day') || !service || !dentist) return;
-    let live = true;
-    setSlots(null);
-    const q = `service=${encodeURIComponent(service)}&doctor=${encodeURIComponent(dentist.id || ANY)}&lang=${lang}`;
-    getJSON<SlotsAnswer>(step === 'time' ? `/api/slots?mode=next&${q}` : `/api/slots?mode=day&${q}&date=${day}`)
-      .then(s => live && setSlots(s))
-      .catch(() => live && setFailed(true));
-    return () => { live = false; };
-  }, [step, service, dentist, day, lang, attempt]);
-
-  const grouped = useMemo(() => {
-    const g = new Map<string, SlotOption[]>();
-    for (const o of slots?.options ?? []) { if (!g.has(o.date)) g.set(o.date, []); g.get(o.date)!.push(o); }
-    return [...g.entries()];
-  }, [slots]);
-
-  const choose = (o: SlotOption) => { setPick(o); go('details'); };
-  const specialty = (id: string) => dentists.find(d => d.id === id)?.specialty[lang];
-  const confirm = () => {
-    const e: typeof errors = {};
-    const name = form.name.trim().replace(/\s+/g, ' ');
-    const digits = form.phone.replace(/[^\d]/g, '');
-    if ((name.match(/\p{L}/gu) || []).length < 2) e.name = t.badName;
-    if (digits.length < 10 || digits.length > 15) e.phone = t.badPhone;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.email.trim())) e.email = t.badEmail;
-    setErrors(e);
-    if (Object.keys(e).length || !svc || !pick) return;
-    try { sessionStorage.setItem('df-details', JSON.stringify({ name, phone: form.phone.trim(), email: form.email.trim() })); } catch { /* ignore */ }
-    const docName = pick.doctorName || (dentist && dentist.id !== ANY ? dentist.name : '');
-    onConfirm({ serviceId: svc.id, serviceName: svc.name.en, dentistId: pick.doctor || (dentist?.id ?? ANY), dentistName: docName,
-      date: pick.date, time: pick.time, name, phone: form.phone.trim(), email: form.email.trim() });
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
+import { useClinic } from "@/components/ClinicProvider";
+import type { Dict, Lang } from "@/lib/i18n";
+import type { Booking } from "@/lib/chat-types";
+import { clock, dayTitle } from "@/lib/slots";
+import {
+  bookingWeekStart,
+  slotError,
+  type AvailabilityAnswer,
+  type TimeOption,
+} from "@/lib/booking-flow";
+export type PanelStart = {
+  service?: string;
+  dentist?: string;
+  reschedule?: {
+    reference: string;
+    contact: { phone?: string; email?: string };
   };
-
-  const titles: Record<Step, string> = { treatment: t.stepTreatment, dentist: t.stepDentist, time: t.stepTime, days: t.pickDay, day: t.stepTime, details: t.stepDetails };
-  const n = { treatment: 1, dentist: 2, time: 3, days: 3, day: 3, details: 4 }[step];
-  const crumbs = [svc?.name[lang], dentist && dentist.id !== ANY ? dentist.name : dentist ? t.anyDentist : '', pick ? `${dayTitle(lang, pick.date, true)} · ${clock(lang, pick.time)}` : '']
-    .filter((x, i) => x && i < n - 1);
-
+};
+export type BookingRequest = {
+  serviceId: string;
+  serviceName: string;
+  dentistId: string;
+  dentistName: string;
+  date: string;
+  time: string;
+  name: string;
+  phone: string;
+  email: string;
+};
+export function BookingPanel({
+  lang,
+  t,
+  start,
+  onClose,
+  onConfirm,
+}: {
+  lang: Lang;
+  t: Dict["chat"];
+  minWord: string;
+  start: PanelStart;
+  onClose: () => void;
+  onConfirm: (
+    request: BookingRequest,
+    result: Booking & { demo?: boolean; endTime?: string; minutes?: number },
+  ) => void;
+}) {
+  const { services } = useClinic(),
+    ur = lang === "ur";
+  const [service, setService] = useState(start.service || ""),
+    [step, setStep] = useState<"service" | "day" | "time" | "confirmation">(
+      start.service ? "day" : "service",
+    );
+  const [week, setWeek] = useState<AvailabilityAnswer | null>(null),
+    [day, setDay] = useState(""),
+    [times, setTimes] = useState<AvailabilityAnswer | null>(null),
+    [pick, setPick] = useState<TimeOption | null>(null);
+  const [error, setError] = useState(""),
+    [weekUpdated, setWeekUpdated] = useState(false),
+    [loading, setLoading] = useState(false),
+    [busy, setBusy] = useState(false),
+    [refresh, setRefresh] = useState(0),
+    [form, setForm] = useState({ name: "", phone: "", email: "" });
+  const key = useRef(""),
+    svc = services.find((s) => s.id === service),
+    button =
+      "min-h-11 rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink transition-colors enabled:hover:border-brand enabled:hover:bg-sky focus-visible:outline-accent disabled:cursor-not-allowed disabled:bg-mist disabled:text-muted";
+  const tile = button + " flex min-h-16 w-full items-center justify-between gap-3 px-4 py-3 text-start";
+  const words = {
+    day: ur ? "دن منتخب کریں" : "Choose a day",
+    time: ur ? "وقت منتخب کریں" : "Choose a time",
+    confirmation: ur ? "تفصیلات اور تصدیق" : "Review and confirm",
+    past: ur ? "گزر گیا" : "Past",
+    closed: ur ? "بند" : "Closed",
+    full: ur ? "بک ہے" : "Full",
+    unavailable: ur ? "نامعلوم" : "Unavailable",
+    back: ur ? "واپس" : "Back",
+    empty: ur
+      ? "اس دن کوئی وقت دستیاب نہیں۔ دوسرا دن منتخب کریں۔"
+      : "No times are available for this day. Please choose another day.",
+  };
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("df-details") || "null");
+      if (saved)
+        setForm({
+          name: String(saved.name || ""),
+          phone: String(saved.phone || ""),
+          email: String(saved.email || ""),
+        });
+    } catch {}
+  }, []);
+  useEffect(() => {
+    if (!service || !["day", "time"].includes(step)) return;
+    const controller = new AbortController();
+    setLoading(true);
+    const mode = step === "day" ? "week" : "day";
+    const query = new URLSearchParams({
+      mode,
+      service,
+      doctor: start.dentist || "any",
+      lang,
+      ...(mode === "day" ? { date: day } : {}),
+    });
+    const url = start.reschedule
+      ? "/api/appointments/reschedule"
+      : `/api/slots?${query}`;
+    fetch(url, {
+      signal: controller.signal,
+      cache: "no-store",
+      ...(start.reschedule
+        ? {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...start.reschedule,
+              action: "slots",
+              mode,
+              date: day,
+            }),
+          }
+        : {}),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok)
+          throw new Error(data.error || data.reason || "unavailable");
+        return data as AvailabilityAnswer;
+      })
+      .then((data) => {
+        if (!controller.signal.aborted) {
+          if (mode === "week") setWeek(data);
+          else setTimes(data);
+        }
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted)
+          setError(e instanceof Error ? e.message : "unavailable");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [service, step, day, start.dentist, start.reschedule, lang, refresh]);
+  useEffect(() => {
+    const firstDay = week?.days?.[0]?.date;
+    if (!firstDay || !week || step === "service") return;
+    const updateWeek = () => {
+      // Keep an in-flight/uncertain request's key so a retry can recover it.
+      if (document.hidden || busy || key.current) return;
+      if (bookingWeekStart(Date.now(), week.timezone) === firstDay) return;
+      setWeek(null);
+      setDay("");
+      setTimes(null);
+      setPick(null);
+      setError("");
+      setWeekUpdated(true);
+      setStep("day");
+      setRefresh((n) => n + 1);
+    };
+    updateWeek();
+    const timer = window.setInterval(updateWeek, 30_000);
+    window.addEventListener("focus", updateWeek);
+    document.addEventListener("visibilitychange", updateWeek);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", updateWeek);
+      document.removeEventListener("visibilitychange", updateWeek);
+    };
+  }, [week, step, busy]);
+  const back = () => {
+    setError("");
+    key.current = "";
+    if (step === "confirmation") setStep("time");
+    else if (step === "time") setStep("day");
+    else if (step === "day" && !start.reschedule) setStep("service");
+    else onClose();
+  };
+  const submit = async () => {
+    if (!svc || !pick || !times) return;
+    key.current ||= crypto.randomUUID();
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(
+        start.reschedule ? "/api/appointments/reschedule" : "/api/bookings",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": key.current,
+          },
+          body: JSON.stringify(
+            start.reschedule
+              ? {
+                  ...start.reschedule,
+                  action: "confirm",
+                  date: pick.date,
+                  time: pick.time,
+                  version: times.version,
+                }
+              : {
+                  ...form,
+                  service,
+                  date: pick.date,
+                  time: pick.time,
+                  doctor: pick.doctor,
+                  language: lang,
+                  version: times.version,
+                },
+          ),
+          signal: AbortSignal.timeout(175000),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        const code = result.error || result.reason || "unavailable";
+        setError(code);
+        if (
+          response.status === 409 &&
+          ["slot-taken", "configuration-changed", "past", "outside-current-week", "closed", "fully-booked", "off-grid", "outside-hours"].includes(code)
+        ) {
+          key.current = "";
+          setPick(null);
+          setTimes(null);
+          setStep("time");
+          setRefresh((n) => n + 1);
+        }
+        return;
+      }
+      if (!start.reschedule) {
+        try { sessionStorage.setItem("df-details", JSON.stringify(form)); } catch {}
+      }
+      onConfirm(
+        {
+          serviceId: service,
+          serviceName: svc.name.en,
+          dentistId: pick.doctor,
+          dentistName: pick.doctorName,
+          date: pick.date,
+          time: pick.time,
+          ...form,
+        },
+        result,
+      );
+    } catch {
+      setError("unavailable");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <motion.div
-      initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', stiffness: 340, damping: 34 }}
-      className="absolute inset-x-0 bottom-0 top-3 z-20 flex flex-col overflow-hidden rounded-t-[1.5rem] bg-mist shadow-[0_-20px_50px_-20px_rgb(11_27_43/0.35)] ring-1 ring-black/5"
-      role="dialog" aria-label={t.panelTitle}
+      initial={{ y: "100%" }}
+      animate={{ y: 0 }}
+      exit={{ y: "100%" }}
+      className="absolute inset-x-0 bottom-0 top-3 z-20 flex flex-col overflow-hidden rounded-t-3xl bg-mist shadow-xl ring-1 ring-line"
+      role="dialog"
+      aria-label={t.panelTitle}
     >
-      {/* header */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-line/70 bg-white/90 px-3 py-3 backdrop-blur">
-        <button type="button" onClick={back} aria-label={t.back} className="grid h-9 w-9 place-items-center rounded-full hover:bg-mist">
-          <svg viewBox="0 0 20 20" className="h-4.5 w-4.5 rtl:-scale-x-100" aria-hidden="true"><path d="M12 5l-5 5 5 5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      <header className="flex shrink-0 items-center gap-2 border-b border-line bg-white p-3">
+        <button
+          type="button"
+          className={button + " shrink-0"}
+          onClick={back}
+          disabled={busy}
+          aria-label={t.back}
+        >
+          ←
         </button>
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold tracking-wide text-brand uppercase">{t.panelTitle}</p>
-          <h3 className="truncate text-[15px] font-semibold text-ink">{titles[step]}</h3>
+          <p className="text-xs text-brand">{t.panelTitle}</p>
+          <h3 className="text-sm font-semibold text-ink">
+            {step === "service" ? t.stepTreatment : words[step]}
+          </h3>
         </div>
-        <div className="flex gap-1" aria-hidden="true">
-          {[1, 2, 3, 4].map(i => <span key={i} className={`h-1.5 rounded-full transition-all ${i === n ? 'w-5 bg-brand' : i < n ? 'w-1.5 bg-brand/50' : 'w-1.5 bg-line'}`} />)}
-        </div>
-        <button type="button" onClick={onClose} aria-label={t.close} className="grid h-9 w-9 place-items-center rounded-full hover:bg-mist">
-          <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+        <button
+          className={button}
+          onClick={onClose}
+          disabled={busy}
+          aria-label={t.close}
+        >
+          ×
         </button>
-      </div>
-      {crumbs.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 px-4 pt-3">
-          {crumbs.map(c => <span key={c} className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-ink-soft ring-1 ring-line">{c}</span>)}
-        </div>
-      )}
-
-      {/* body */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div key={step + day} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.18 }} className="space-y-2">
-            {failed && (
-              <div className="rounded-2xl bg-rose-50 p-3 text-sm text-rose-900 ring-1 ring-rose-200">
-                {t.slotsError}{' '}
-                <button type="button" className="font-semibold underline" onClick={() => { setFailed(false); setAttempt(a => a + 1); }}>{t.retry}</button>
-              </div>
-            )}
-
-            {step === 'treatment' && services.map(s => (
-              <Row key={s.id} title={s.name[lang]} sub={`${minutes(lang, s.minutes, minWord)} · ${money(lang, s.price, clinic.currency)}`}
-                onClick={() => { setService(s.id); setDentist(null); go('dentist'); }} />
+      </header>
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-3">
+        {weekUpdated && (
+          <p role="status" className="rounded-xl border border-line bg-sky p-3 text-sm text-brand">
+            {ur ? "نیا ہفتہ شروع ہو گیا ہے۔ تازہ دستیاب دن اور وقت منتخب کریں۔" : "A new week has started. Please choose from the updated days and times."}
+          </p>
+        )}
+        {svc && step !== "service" && (
+          <p className="text-sm font-semibold text-ink">
+            {svc.name[lang]}{" "}
+            <span className="font-normal text-muted">
+              · {times?.durationMin || week?.durationMin || svc.minutes}{" "}
+              {ur ? "منٹ" : "min"}
+            </span>
+          </p>
+        )}
+        {error && (
+          <p
+            role="alert"
+            className="rounded-xl bg-rose-50 p-3 text-sm text-rose-900"
+          >
+            {slotError(error, ur)}{" "}
+            <button
+              className="min-h-11 underline"
+              onClick={() => {
+                if (step === "confirmation") { void submit(); return; }
+                setError("");
+                setRefresh((n) => n + 1);
+              }}
+            >
+              {t.retry}
+            </button>
+          </p>
+        )}
+        {loading && (
+          <p role="status" className="text-sm text-muted">
+            {t.loading}
+          </p>
+        )}
+        {step === "service" && (
+          <div className="grid gap-2">
+            {services.map((s) => (
+              <button
+                className={button + " text-start"}
+                key={s.id}
+                onClick={() => {
+                  setService(s.id);
+                  setWeek(null);
+                  setTimes(null);
+                  setStep("day");
+                  setError("");
+                }}
+              >
+                {s.name[lang]}
+              </button>
             ))}
-
-            {step === 'dentist' && !failed && (doctors === null ? <Loading text={t.loading} /> : (
-              <>
-                <Row accent title={t.anyDentist} sub={t.anyDentistHint} onClick={() => { setDentist({ id: ANY, name: '' }); go('time'); }} />
-                {doctors.map(d => (
-                  <Row key={d.id} title={<span dir="ltr">{d.name}</span>} sub={specialty(d.id)} onClick={() => { setDentist(d); go('time'); }} />
-                ))}
-              </>
-            ))}
-
-            {(step === 'time' || step === 'day') && !failed && (slots === null ? <Loading text={t.loading} /> : (
-              <>
-                {step === 'day' && <p className="pb-1 text-sm font-semibold text-ink">{dayTitle(lang, day)}</p>}
-                {grouped.length === 0 && <p className="rounded-2xl bg-white p-4 text-sm text-ink-soft ring-1 ring-line">{t.noTimes}</p>}
-                {grouped.map(([date, opts]) => (
-                  <div key={date} className="space-y-2 pb-2">
-                    {step === 'time' && <p className="sticky top-0 z-10 bg-mist/95 py-1 text-xs font-semibold tracking-wide text-muted uppercase backdrop-blur">{dayTitle(lang, date)}</p>}
-                    {opts.map(o => (
-                      <Row key={o.date + o.time + o.doctor} title={<span className="tabular-nums">{clock(lang, o.time)}</span>}
-                        sub={o.doctorName && (!dentist || dentist.id === ANY) ? <span dir="ltr">{o.doctorName}</span> : undefined} onClick={() => choose(o)} />
-                    ))}
-                  </div>
-                ))}
-                <Row accent title={t.otherDays} onClick={() => go('days')} />
-              </>
-            ))}
-
-            {step === 'days' && nextDays(14).map(d => (
-              <Row key={d} title={dayTitle(lang, d)} onClick={() => { setDay(d); go('day'); }} />
-            ))}
-
-            {step === 'details' && pick && svc && (
-              <form className="space-y-3" onSubmit={e => { e.preventDefault(); confirm(); }} noValidate>
-                <div className="rounded-2xl bg-white p-4 ring-1 ring-line">
-                  <p className="text-[15px] font-semibold text-ink">{svc.name[lang]}</p>
-                  <p className="mt-1 text-sm text-ink-soft">{dayTitle(lang, pick.date)} · <span className="tabular-nums">{clock(lang, pick.time)}</span></p>
-                  {(pick.doctorName || (dentist && dentist.id !== ANY)) && <p className="mt-0.5 text-sm text-ink-soft" dir="ltr">{pick.doctorName || dentist?.name}</p>}
-                </div>
-                {([['name', t.name, '', 'name', 'text'], ['phone', t.phone, t.phoneHint, 'tel', 'tel'], ['email', t.email, t.emailHint, 'email', 'email']] as const).map(([k, label, hint, auto, type]) => (
-                  <label key={k} className="block">
-                    <span className="mb-1 block text-xs font-semibold text-ink-soft">{label}</span>
-                    <input type={type} autoComplete={auto} value={form[k]} dir={k === 'name' ? 'auto' : 'ltr'}
-                      onChange={e => { setForm(f => ({ ...f, [k]: e.target.value })); setErrors(x => ({ ...x, [k]: undefined })); }}
-                      aria-invalid={!!errors[k]}
-                      className={`w-full rounded-xl bg-white px-3.5 py-2.5 text-[15px] text-ink outline-none ring-1 transition focus:ring-2 focus:ring-brand/50 ${errors[k] ? 'ring-rose-300' : 'ring-line'}`} />
-                    {errors[k] ? <span className="mt-1 block text-xs text-rose-700">{errors[k]}</span> : hint ? <span className="mt-1 block text-[11px] text-muted">{hint}</span> : null}
-                  </label>
-                ))}
-                <button type="submit" className="w-full rounded-full bg-ink py-3 text-sm font-semibold text-white transition hover:bg-brand-deep active:scale-[0.98]">
-                  {t.confirmBooking}
+          </div>
+        )}
+        {(week?.pending || times?.pending) && start.reschedule && (
+          <button
+            disabled={busy}
+            className={button + " w-full"}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const r = await fetch("/api/appointments/reschedule", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    ...start.reschedule,
+                    action: "resume",
+                  }),
+                });
+                const result = await r.json();
+                if (!r.ok || !result.ok) throw new Error(result.error || "unavailable");
+                if (svc) onConfirm({ serviceId: service, serviceName: svc.name.en, dentistId: start.dentist || "any", dentistName: result.dentist, date: result.date, time: result.time, ...form }, result);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "unavailable");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {ur
+              ? "نامکمل تبدیلی دوبارہ مکمل کریں"
+              : "Resume interrupted time change"}
+          </button>
+        )}
+        {step === "day" && week && !loading && (
+          <>
+            <p className="text-xs text-muted">
+              {week.timezone} · {ur ? "اس ہفتے" : "This week"}
+            </p>
+            <div className="grid grid-cols-1 gap-2" aria-label={words.day}>
+              {week.days?.map((d) => (
+                <button
+                  key={d.date}
+                  className={tile}
+                  disabled={!d.available}
+                  onClick={() => {
+                    setDay(d.date);
+                    setTimes(null);
+                    setStep("time");
+                    setError("");
+                  }}
+                >
+                  <span className="min-w-0 text-sm font-semibold">
+                    {dayTitle(lang, d.date, true)}
+                  </span>
+                  <span className={"shrink-0 rounded-lg px-2 py-1 text-xs " + (d.available ? "bg-sky text-brand" : "bg-line/40 text-muted")}>
+                    {d.available ? (ur ? "دستیاب" : "Available") : d.reason === "past"
+                      ? words.past
+                      : d.reason === "closed"
+                        ? words.closed
+                        : d.reason === "fully-booked"
+                          ? words.full
+                          : words.unavailable}
+                  </span>
                 </button>
-              </form>
+              ))}
+            </div>
+            {!week.days?.some((d) => d.available) && (
+              <p
+                role="status"
+                className="rounded-xl bg-white p-3 text-sm text-ink"
+              >
+                {slotError("nothing-free-this-week", ur)}
+              </p>
             )}
-          </motion.div>
-        </AnimatePresence>
+          </>
+        )}
+        {step === "time" && times && !loading && (
+          <>
+            <p className="text-sm text-ink">{dayTitle(lang, day, true)}</p>
+            {times.options.length ? (
+              <div className="grid grid-cols-1 gap-2" aria-label={words.time}>
+                {times.options.map((o) => (
+                  <button
+                    key={o.startsAt}
+                    className={tile + " tabular-nums"}
+                    aria-label={clock(lang, o.time)}
+                    onClick={() => {
+                      setPick(o);
+                      key.current = "";
+                      setStep("confirmation");
+                      setError("");
+                    }}
+                  >
+                    <span className="min-w-0">
+                      <span className="block font-semibold">{clock(lang, o.time)}</span>
+                      <span className="mt-1 block text-xs text-muted">
+                        {ur ? "اختتام" : "Ends"} {clock(lang, o.endTime)}
+                      </span>
+                    </span>
+                    <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sky text-brand rtl:rotate-180">→</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p
+                role="status"
+                className="rounded-xl bg-white p-3 text-sm text-ink"
+              >
+                {times.reason === "unavailable"
+                  ? slotError("unavailable", ur)
+                  : words.empty}
+              </p>
+            )}
+            <button
+              className={button + " w-full"}
+              onClick={() => {
+                setStep("day");
+                setError("");
+              }}
+            >
+              {words.back} · {words.day}
+            </button>
+          </>
+        )}
+        {step === "confirmation" && pick && svc && (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit();
+            }}
+          >
+            <div className="rounded-xl bg-white p-3 text-sm text-ink ring-1 ring-line">
+              <p className="font-semibold">{svc.name[lang]}</p>
+              <p>{dayTitle(lang, pick.date, true)}</p>
+              <p className="tabular-nums" dir="ltr">
+                {clock(lang, pick.time)} – {clock(lang, pick.endTime)}
+              </p>
+              <p>{pick.doctorName}</p>
+            </div>
+            {!start.reschedule &&
+              (["name", "phone", "email"] as const).map((field) => (
+                <label
+                  key={field}
+                  className="block text-xs font-semibold text-ink"
+                >
+                  {t[field]}
+                  <input
+                    required
+                    minLength={
+                      field === "name" ? 2 : field === "phone" ? 10 : undefined
+                    }
+                    type={
+                      field === "email"
+                        ? "email"
+                        : field === "phone"
+                          ? "tel"
+                          : "text"
+                    }
+                    autoComplete={field === "phone" ? "tel" : field}
+                    value={form[field]}
+                    disabled={busy}
+                    onChange={(e) => {
+                      setForm((f) => ({ ...f, [field]: e.target.value }));
+                      key.current = "";
+                    }}
+                    className="mt-1 min-h-11 w-full rounded-xl border border-line bg-white px-3 text-sm font-normal"
+                  />
+                </label>
+              ))}
+            <button
+              type="submit"
+              disabled={busy}
+              className="min-h-11 w-full rounded-xl bg-brand px-3 py-3 text-sm font-semibold text-white transition-colors enabled:hover:bg-brand-deep disabled:opacity-60"
+            >
+              {busy
+                ? t.loading
+                : start.reschedule
+                  ? ur
+                    ? "نئے وقت کی تصدیق"
+                    : "Confirm new time"
+                  : t.confirmBooking}
+            </button>
+          </form>
+        )}
       </div>
     </motion.div>
   );

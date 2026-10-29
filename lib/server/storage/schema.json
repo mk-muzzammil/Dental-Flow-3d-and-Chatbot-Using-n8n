@@ -1,0 +1,32 @@
+{
+  "Appointments": [
+    "booking_id",
+    "reference",
+    "created_at",
+    "status",
+    "patient_id",
+    "service_id",
+    "service_name",
+    "date",
+    "time",
+    "duration_min",
+    "doctor_id",
+    "doctor_name",
+    "price",
+    "end_time"
+  ],
+  "Patients": [
+    "patient_id",
+    "name",
+    "phone",
+    "email"
+  ],
+  "Doctors": [
+    "doctor_id",
+    "name",
+    "services",
+    "active",
+    "specialization_ids",
+    "specializations"
+  ]
+}

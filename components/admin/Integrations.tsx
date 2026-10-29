@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { adminFetch, useAdminData, useClinicTime } from './client';
 export function Integrations() {
-  const { displayTime, timezone } = useClinicTime();
+  const { displayTime } = useClinicTime();
   const connection = useAdminData<{ status: string; email?: string; scopes: string[]; updatedAt?: string }>(
     '/api/admin/integrations/google',
   );
@@ -111,8 +111,7 @@ export function Integrations() {
               Fallback Calendar ID
               <input name="calendarId" defaultValue={settings.data.calendarId} required maxLength={254} />
               <small>
-                Used when the Doctors tab has no active calendars. Each doctor’s Calendar ID remains in the
-                Sheet.
+                Used when the Doctors tab has no active calendars. Doctor calendars are configured below after migration; legacy workbooks use the Doctors tab.
               </small>
             </label>
             <div className="actions">
@@ -131,6 +130,7 @@ export function Integrations() {
           <p>Loading resource selection…</p>
         )}
       </section>
+      <p><a href="/admin/portal/clinic">Manage clinic services, doctors and working hours →</a></p>
       {message ? (
         <p role="status" className="notice">
           {message}

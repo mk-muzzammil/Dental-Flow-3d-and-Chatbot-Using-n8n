@@ -1,7 +1,7 @@
-import type { HoldInput, Hold, Row, DoctorChoice, BusyResponse } from './types';
+import type { HoldInput, Hold, Row, Doctor, BusyResponse } from './types';
 export function checkAvailability(
   input: HoldInput,
   data: Row[][],
-  doctors: DoctorChoice,
+  doctors: { eligible: Doctor[] },
   freeBusy: BusyResponse,
 ): Hold;

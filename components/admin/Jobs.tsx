@@ -231,7 +231,7 @@ export function Jobs() {
   );
 }
 export function RunTable({ runs }: { runs: RunView[] }) {
-  const { displayTime, timezone } = useClinicTime();
+  const { displayTime } = useClinicTime();
   return (
     <div className="table-wrap">
       <table>
@@ -281,7 +281,7 @@ export function RunTable({ runs }: { runs: RunView[] }) {
   );
 }
 export function RunDetail({ runId }: { runId: string }) {
-  const { displayTime, timezone } = useClinicTime();
+  const { displayTime } = useClinicTime();
   const { data, error } = useAdminData<{ run: RunView }>(
       `/api/admin/cron/runs/${encodeURIComponent(runId)}`,
       true,

@@ -1,5 +1,6 @@
 import 'server-only';
-import { appUrl, clinicDefaults } from '../config';
+import { savedClinicDefaults } from '../storage/clinic-defaults';
+import { appUrl } from '../config';
 import { escapeHtml as esc, digest } from '../security';
 import { sendEmail, type GoogleEvent } from '../google/api';
 import { operate } from '../operations/journal';
@@ -20,16 +21,16 @@ export function page(title: string, body: string, tone: 'good' | 'warn' | 'bad' 
 export function bookingRows(b: Booking) {
   return `<table>${[['Treatment', b.service], ...(b.dentist ? [['Dentist', b.dentist]] : []), ['When', when(b)], ['Duration', `${b.minutes} minutes`], ['Reference', b.reference]].map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`;
 }
-export function confirmation(b: Booking, event?: GoogleEvent) {
-  const value = confirmationTemplate(b, clinicDefaults(), event);
+export async function confirmation(b: Booking, event?: GoogleEvent) {
+  const value = confirmationTemplate(b, await savedClinicDefaults(), event);
   return { html: value.email, page: value.html, subject: value.subject };
 }
-export function releaseNotice(b: Booking, expired: boolean) {
-  if (expired) return expiryTemplate(b, clinicDefaults());
-  const value = cancellationEmailTemplate(b, clinicDefaults(), undefined, when(b));
+export async function releaseNotice(b: Booking, expired: boolean) {
+  if (expired) return expiryTemplate(b, await savedClinicDefaults());
+  const value = cancellationEmailTemplate(b, await savedClinicDefaults(), undefined, when(b));
   return { html: value.email, subject: value.subject };
 }
-export const cancelledPage = (b: Booking) => cancelledTemplate(b, clinicDefaults()).html;
+export const cancelledPage = async (b: Booking) => cancelledTemplate(b, await savedClinicDefaults()).html;
 export async function notifyBooking(
   b: Booking,
   kind: 'confirmed' | 'cancelled' | 'expired',
@@ -45,7 +46,7 @@ export async function notifyBooking(
       digest(key),
       async (journal) => {
         await journal.setIdentity(identity(b), b.reference);
-        const mail = kind === 'confirmed' ? confirmation(b, event) : releaseNotice(b, kind === 'expired');
+        const mail = kind === 'confirmed' ? await confirmation(b, event) : await releaseNotice(b, kind === 'expired');
         await journal.step(
           'send',
           () => sendEmail(b.email, mail.subject, mail.html, journal.id, signal),

@@ -1,5 +1,7 @@
 # Local live testing
 
+> **Schema v2 update (28 October 2026):** The website workbook now uses only Appointments, Patients and Doctors. Clinic configuration and private Calendar/token fields are in MongoDB and edited under Admin → Integrations. The legacy tab/column examples below apply only to unmigrated staging workbooks. For current storage and migration commands, see README → Clean website workbook. Do not recreate legacy configuration tabs in the migrated workbook.
+
 ## Readiness observed on 28 October 2026
 
 - MongoDB connection and ping succeeded for the configured test database.

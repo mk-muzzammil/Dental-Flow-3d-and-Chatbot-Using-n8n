@@ -2,6 +2,7 @@
 
 export type Appointment = {
   reference: string;
+  serviceId?:string;doctorId?:string;endTime?:string;
   service: string;
   dentist: string;
   /** YYYY-MM-DD and HH:MM, clinic time */
@@ -46,7 +47,7 @@ export function cleanAnswer(raw: unknown): AppointmentsAnswer {
     const x = (a ?? {}) as Record<string, unknown>;
     const reference = str(x.reference, 30), date = str(x.date, 10), time = str(x.time, 5);
     if (!reference || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return [];
-    return [{ reference, date, time, service: str(x.service, 80), dentist: str(x.dentist, 80),
+    return [{ reference, date, time, serviceId:str(x.serviceId,40),doctorId:str(x.doctorId,40),endTime:str(x.endTime,5),service: str(x.service, 80), dentist: str(x.dentist, 80),
       minutes: Math.min(480, Math.max(5, Number(x.minutes) || 30)), status: x.status === 'pending' ? 'pending' : 'confirmed' } as Appointment];
   });
   return { ok: true, appointments };

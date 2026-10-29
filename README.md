@@ -1,6 +1,6 @@
 # DentalFlow
 
-A multilingual dental-clinic website with a scroll-linked 3D experience, website chat, voice transcription, booking, and appointment cards. The server runs in Next.js. Google Sheets remains the clinic data store; Google Calendar holds appointments; the connected owner’s Gmail sends confirmations.
+A multilingual dental-clinic website with a scroll-linked 3D experience, website chat, voice transcription, booking, and appointment cards. The server runs in Next.js. Google Sheets is the reception workbook; MongoDB holds editable clinic configuration and encrypted private booking fields; Google Calendar holds appointments; the connected owner’s Gmail sends confirmations.
 
 ## Run locally
 
@@ -39,12 +39,41 @@ The default models are `gemini-3.5-flash-lite` for chat/voice and `gemini-3.8-fl
 ## Admin portal
 
 - `/admin/portal`: mode, integration readiness, and cleanup age.
-- `/admin/portal/integrations`: owner connection, resource selection, access checks.
+- `/admin/portal/integrations`: owner connection, resource selection and access checks.
+- `/admin/portal/clinic`: labelled forms for clinic details, services, doctors, schedules, specializations, holidays, FAQs and booking settings.
 - `/admin/portal/cron`: scheduling state, Run now, filtered/cursor-paginated history.
 - `/admin/portal/cron/runs/[runId]`: redacted execution details.
 - `/admin/portal/operations`: failed, uncertain, or running operations with booking references and hashed identities.
 
 Access JWTs last 15 minutes. Refresh sessions expire after seven days and rotate on use. Cookies are host-only, HttpOnly for credentials, SameSite=Lax, and Secure over HTTPS. The separate CSRF cookie supplies the session-bound header for mutations. Page proxy checks are repeated against the database in handlers. Changing admin credentials invalidates existing sessions.
+
+## Clean website workbook (schema v2)
+
+Only the website workbook should be migrated; the original n8n workbook must remain unchanged.
+
+| Location | Data |
+|---|---|
+| Sheets: Appointments | Booking ID, reference, creation time, status, patient ID, service, date/time, duration, doctor and price |
+| Sheets: Patients | Patient ID, name, phone and email; shared across repeated bookings with the same identity |
+| Sheets: Doctors | Doctor ID/name, services, active state and specialization IDs/labels |
+| MongoDB: clinic_configuration | Services/prices/translations, hours, holidays, FAQs, specialization catalog and clinic settings; doctor Calendar IDs/staff emails are encrypted |
+| MongoDB: booking_private | Encrypted cancellation tokens, Calendar event/Calendar IDs, hold expiry, first-visit flag and private notes |
+| Server code: lib/server/storage/schema.json | Fixed worksheet column definitions only; no clinic records or credentials |
+
+Use **Admin → Clinic management** to edit configuration without JSON. Apply record edits to a draft, then Save changes to publish. Doctor edits save directly to the Doctors Sheet; Calendar IDs and staff emails stay encrypted in MongoDB. IDs remain stable, records can be deactivated, and stale edits are rejected. An interrupted doctor save has a Resume interrupted save control; availability pauses until the cross-store update finishes. Calendar access checks verify availability access, not event-write permission. The Doctors `specialization_ids` column uses the IDs in the MongoDB specialization catalog; `specializations` is the reception-facing label. Blank qualifications are marked “Not specified”, never inferred from treatment availability. The internal booking ID column is hidden for readability, not security; patient IDs remain visible to connect the two reception tabs. Preserve IDs when sorting rows. Raw-value writes retain phone leading zeros and ISO date/time text.
+
+Deploy the updated code before migration. Preview and then apply to the explicitly selected website workbook:
+
+```sh
+npm run sheet:migrate -- --sheet-id YOUR_WEBSITE_SHEET_ID
+npm run sheet:migrate -- --sheet-id YOUR_WEBSITE_SHEET_ID --apply
+```
+
+The script verifies selection and legacy headers, makes an encrypted recovery snapshot, pauses live booking operations, moves private records, and replaces the tabs in one Sheets batch. It checks hydrated bookings against the snapshot before activating schema v2. A rerun verifies an already migrated workbook without duplicating records. If interrupted, keep this code deployed and rerun the same command; the migration flag fails closed while unresolved. A source-change assertion requires reconciling the snapshot first. Do not restore an old deployment against a schema-v2 workbook.
+
+Migration snapshots are in `migration_backups`, encrypted with the existing token-encryption key. They expire 30 days after successful migration; unresolved snapshots are retained. Restoring a snapshot is an operator recovery procedure: decrypt it server-side, restore its original tab values, and revert the matching storage profile together while writes are paused. Never paste decrypted snapshots into logs or commits. Keep the encryption key backed up: it now protects booking links and doctor connections as well as OAuth credentials. `booking_private` has no automatic TTL because historical records still refer to it.
+
+This reduces exposed fields but does not make patient Sheets anonymous: names, phone numbers, email addresses and treatment details are still personal data. Keep workbook access restricted to authorized clinic staff. Removing cells/tabs does not erase Google Sheets revision history or recipients’ existing copies. The original phone-or-email public lookup policy remains unchanged.
 
 ## Scheduling and deployment
 
@@ -91,4 +120,21 @@ For local testing with separate doctor calendars, sample patient data, and manua
 | `lib/server/jobs` | Registry, runner, scheduling periods, missed-run history |
 | `Web-N8N-Workflows` | Original reference exports; never loaded by production runtime |
 
-`content/clinic.ts` controls public website copy, dentists, treatments, and prices. The live assistant reads Google Sheets, so keep both sources aligned. No production runtime path calls n8n or a WhatsApp API.
+`content/clinic.ts` provides demo content and 3D artwork configuration. In live mode, the public website, booking panel and assistant use the managed clinic configuration and Doctors Sheet. Live clinic management requires the clean-workbook migration. No private Calendar IDs, staff emails or booking tokens are included in public clinic data. Existing bookings retain their service/price/calendar snapshots. Schedule changes do not move existing appointments; review those bookings separately. Working hours support one opening period and one optional break per day. No production runtime path calls n8n or a WhatsApp API.
+
+Clinic editor verification: `npm run test:clinic` uses the configured MongoDB server with a uniquely named temporary database, mocks every Google request, and drops only that temporary database afterward. It covers booking regression, doctor saves, response-loss retries, Sheet-write failure recovery, stale-edit rejection and public-data privacy. The MongoDB user needs permission to create/drop this temporary database; the configured clinic database is not modified.
+
+For current-week booking, duration rules, rescheduling, migration and automated tests, see [appointment slots](docs/appointment-slots.md).
+
+## Repository checks
+
+```sh
+npm run typecheck
+npm run test:availability
+npm run test:framing
+npm run test:clinic
+npm run test:booking-ui
+npm run build
+```
+
+Tests live in `tests/`. The clinic integration test uses an isolated temporary MongoDB database and mocked Google calls; it needs the configured database connection. The availability and 3D-framing checks run without external services. Migration, initialization and model-generation utilities remain in `scripts/`. TypeScript rejects unused local declarations and parameters. Browser logs, snapshots, test reports and coverage are generated locally and ignored by Git.

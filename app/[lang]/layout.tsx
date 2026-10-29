@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
 import Script from 'next/script';
 import { LANGS, dictionaries, dirOf, isLang } from '@/lib/i18n';
-import { clinic } from '@/content/clinic';
+import { publicClinic } from '@/lib/server/storage/public-clinic';
+export const dynamic = 'force-dynamic';
 import { ReadyGate } from '@/components/ReadyGate';
 import '../globals.css';
 
@@ -20,6 +21,7 @@ export const viewport: Viewport = { themeColor: '#f7fafc', width: 'device-width'
 export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
   const { lang } = await params;
   if (!isLang(lang)) return {};
+  const { clinic } = await publicClinic();
   const t = dictionaries[lang];
   const title = `${clinic.name[lang]} · ${t.meta.title}`;
   return {
@@ -34,6 +36,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
 export default async function RootLayout({ children, params }: { children: React.ReactNode; params: Promise<{ lang: string }> }) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
+  const { clinic } = await publicClinic();
   return (
     <html lang={lang} dir={dirOf(lang)} suppressHydrationWarning>
       <body>

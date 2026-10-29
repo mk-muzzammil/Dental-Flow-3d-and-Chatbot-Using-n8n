@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { adminFetch, ClinicTimezone } from './client';
 const links = [
   ['/admin/portal', 'Overview'],
+  ['/admin/portal/clinic', 'Clinic management'],
   ['/admin/portal/integrations', 'Integrations'],
   ['/admin/portal/cron', 'Scheduled jobs'],
   ['/admin/portal/operations', 'Recovery records'],

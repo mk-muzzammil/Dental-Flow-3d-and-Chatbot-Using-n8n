@@ -1,4 +1,7 @@
 import 'server-only';
+import { currentWeek, localInstant } from '@/lib/availability';
+import { readClinic } from '../dental/clinic';
+import { DF } from '../dental/rules';
 import { GoogleGenAI, type Content, type FunctionCall, type FunctionDeclaration } from '@google/genai';
 import type { ChatRequest } from '@/lib/chat-types';
 import { env, required, clinicDefaults, deadline, checkSignal, AppError, safeError } from '../config';
@@ -15,9 +18,8 @@ const typed = (value: string) =>
     .map((l) => l.replace(/^([\s\u200b-\u200f\u2060\ufeff]*)\[/, '$1('))
     .join('\n  ');
 const uiNames: Record<string, string> = { en: 'English', ur: 'Urdu', ar: 'Arabic', 'roman-ur': 'Roman Urdu' };
-export function prompt(clinicBlock: string, lang: string) {
+export function prompt(clinicBlock: string, lang: string, tz = clinicDefaults().TIMEZONE) {
   const now = new Date(),
-    tz = 'Asia/Karachi',
     c = clinicDefaults();
   const format = (date: Date, options: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat('en-GB', { timeZone: tz, ...options }).format(date);
@@ -28,17 +30,7 @@ export function prompt(clinicBlock: string, lang: string) {
     languageHint: ` (the visitor is using the website in ${uiNames[lang] || 'English'})`,
     today: format(now, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
     time: format(now, { hour: 'numeric', minute: '2-digit', hour12: true }),
-    nextDays: Array.from({ length: 8 }, (_, i) => {
-      const date = new Date(now.getTime() + i * 86400_000),
-        parts = new Intl.DateTimeFormat('en-CA', {
-          timeZone: tz,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }).formatToParts(date);
-      const get = (key: string) => parts.find((p) => p.type === key)?.value;
-      return `${format(date, { weekday: 'short', day: 'numeric', month: 'short' })} = ${get('year')}-${get('month')}-${get('day')}`;
-    }).join(', '),
+    nextDays: currentWeek(now.getTime(), tz).map(date => `${format(new Date(localInstant(date, '12:00', tz)), { weekday: 'short', day: 'numeric', month: 'short' })} = ${date}`).join(', '),
   };
   return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => values[key] || '');
 }
@@ -116,8 +108,10 @@ export async function executeTool(call: FunctionCall, requestKey: string, signal
   const args = validateTool(call),
     lang = /^ar/.test(args.lang) ? 'ar' : /^ur/.test(args.lang) ? 'ur' : 'en';
   switch (call.name) {
-    case 'get_next_slots':
-      return slots({ ...args, service: args.service, mode: 'next', lang }, signal);
+    case 'get_next_slots': {
+      const result=await slots({...args,service:args.service,mode:'week',lang},signal);
+      return {...result,options:[]};
+    }
     case 'get_available_slots':
       return slots({ ...args, service: args.service, mode: 'day' }, signal);
     case 'get_doctors':
@@ -135,6 +129,8 @@ export async function chat(body: ChatRequest, requestKey: string, signal: AbortS
   const client = new GoogleGenAI({ apiKey: required('GEMINI_API_KEY') });
   const heard = body.audio ? await transcribe(client, body.audio, signal) : undefined;
   const block = await clinicPrompt(signal);
+  const clinicRows=await readClinic(signal);
+  const configuredTimezone=String(DF.settings(clinicRows[2]).timezone||clinicDefaults().TIMEZONE);
   const lines = body.history.map((m) =>
     m.role === 'user'
       ? `Patient: ${typed(m.text)}`
@@ -163,7 +159,7 @@ export async function chat(body: ChatRequest, requestKey: string, signal: AbortS
         contents,
         config: {
           temperature: 0.3,
-          systemInstruction: prompt(block, body.lang),
+          systemInstruction: prompt(block, body.lang, configuredTimezone),
           tools: [{ functionDeclarations: declarations as FunctionDeclaration[] }],
           abortSignal: signal,
         },

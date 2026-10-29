@@ -2,10 +2,6 @@
 import type { Lang } from './i18n';
 import { LOCALE } from './format';
 
-export type SlotOption = { date: string; time: string; doctor: string; doctorName: string };
-export type SlotsAnswer = { options: SlotOption[]; reason?: string };
-export type DoctorsAnswer = { doctors: { id: string; name: string }[] };
-
 /** "Monday, 12 October" in the visitor's language. */
 export const dayTitle = (lang: Lang, ymd: string, short = false) =>
   new Date(ymd + 'T12:00:00Z').toLocaleDateString(LOCALE[lang], {

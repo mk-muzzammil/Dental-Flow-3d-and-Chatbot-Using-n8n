@@ -1,6 +1,7 @@
 import 'server-only';
 import { collection } from '../db';
 import { env, AppError } from '../config';
+import { storageProfile } from '../storage/profile';
 export type ScheduleSnapshot = {
   id: string;
   cron: string;
@@ -43,11 +44,12 @@ export async function saveSettings(input: Record<string, unknown>) {
     calendarId = String(input.calendarId || 'primary').trim();
   if (!/^[\w-]{10,200}$/.test(sheetId) || !calendarId || calendarId.length > 254 || /[\r\n]/.test(calendarId))
     throw new AppError('invalid_settings', 400);
+  const profile = await storageProfile(sheetId);
   await (
     await collection<Settings>('app_settings')
   ).updateOne(
     { _id: 'clinic' },
-    { $set: { sheetId, calendarId, schemaVersion: 1, ready: false } },
+    { $set: { sheetId, calendarId, schemaVersion: profile?.availabilityVersion===2?3:profile?2:1, ready: false } },
     { upsert: true },
   );
   await (await collection('clinic_cache')).deleteMany({});

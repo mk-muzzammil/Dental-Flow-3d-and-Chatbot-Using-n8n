@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation';
 import { dictionaries, isLang } from '@/lib/i18n';
-import { clinic } from '@/content/clinic';
+import { publicClinic } from '@/lib/server/storage/public-clinic';
+import { ClinicProvider } from '@/components/ClinicProvider';
+export const dynamic = 'force-dynamic';
 import { Nav } from '@/components/sections/Nav';
 import { Experience } from '@/components/sections/Experience';
 import { CallToAction, Dentists, Faq, Footer, How, Treatments, Visit } from '@/components/sections/Content';
@@ -10,6 +12,8 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   const t = dictionaries[lang];
+  const data = await publicClinic();
+  const { clinic } = data;
   return (
     <>
       <Nav lang={lang} t={t} clinicName={clinic.name[lang]} />
@@ -23,7 +27,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
         <CallToAction t={t} />
       </main>
       <Footer lang={lang} t={t} />
-      <ChatWidget lang={lang} t={t.chat} phone={clinic.phone} minWord={t.treatments.min} />
+      <ClinicProvider value={data}><ChatWidget lang={lang} t={t.chat} phone={clinic.phone} minWord={t.treatments.min} /></ClinicProvider>
     </>
   );
 }

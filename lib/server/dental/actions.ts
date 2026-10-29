@@ -15,6 +15,9 @@ import {
   writeBooking,
   type Booking,
 } from './appointments';
+import { collection } from '../db';
+import type { PrivateBooking } from '../storage/worksheets';
+import { releaseReservation } from './reservations';
 import { notifyBooking } from './notifications';
 export function actionGuard(b: Booking, action: 'confirm' | 'cancel', channel: 'web' | 'token') {
   if (b.status === 'CANCELLED')
@@ -88,6 +91,7 @@ export async function cancelBooking(
           await journal.setIdentity(key, initial.reference);
           const b = await findBooking(initial.reference, initial.token, signal);
           if (!b || identity(b) !== key) throw new AppError('not-found', 404);
+          if(await(await collection<PrivateBooking>('booking_private')).findOne({bookingId:key,pendingMove:{$exists:true}}))throw new AppError('booking-update-pending',409);
           if (b.status === 'CANCELLED' && !journal.context())
             throw new AppError(web ? 'already-cancelled' : 'cancelled', 409);
           // A completed Sheet write followed by an interrupted journal update is safe to resume.
@@ -101,6 +105,7 @@ export async function cancelBooking(
             `${b.notes}${b.notes ? ' | ' : ''}Cancelled by patient in the website chat ${new Date().toLocaleString('en-GB', { timeZone: clinicDefaults().TIMEZONE })}`;
           if (!context) await journal.saveContext({ note });
           await journal.step('sheet', () => writeBooking(b, 'CANCELLED', web ? note : undefined, signal));
+          await releaseReservation(identity(b));
           const emailed = web ? await notifyBooking(b, 'cancelled', undefined, signal) : false;
           return { ok: true, reference: b.reference, status: 'cancelled', emailed };
         },
@@ -129,10 +134,12 @@ export async function expireBooking(initial: Booking, signal?: AbortSignal) {
             !(Date.parse(b.expiresAt) <= Date.now())
           )
             return { skipped: true, emailed: false };
+          if(await(await collection<PrivateBooking>('booking_private')).findOne({bookingId:key,pendingMove:{$exists:true}}))throw new AppError('booking-update-pending',409);
           await journal.step('calendar', () =>
             deleteEvent(b.calendarId, b.eventId || '__no-event__', signal),
           );
           await journal.step('sheet', () => writeBooking(b, 'EXPIRED', undefined, signal));
+          await releaseReservation(identity(b));
           const emailed = await notifyBooking(b, 'expired', undefined, signal);
           return { skipped: false, emailed, notificationFailed: !!b.email && !emailed };
         },

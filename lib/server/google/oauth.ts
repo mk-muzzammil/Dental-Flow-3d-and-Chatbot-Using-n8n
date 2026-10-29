@@ -1,6 +1,6 @@
 import 'server-only';
 import { OAuth2Client, CodeChallengeMethod } from 'google-auth-library';
-import { collection, retentionDate } from '../db';
+import { collection } from '../db';
 import { appUrl, required, AppError, deadline } from '../config';
 import { digest, opaqueToken, encrypt, decrypt, type Ciphertext } from '../security';
 import { withLease } from '../operations/lease';
