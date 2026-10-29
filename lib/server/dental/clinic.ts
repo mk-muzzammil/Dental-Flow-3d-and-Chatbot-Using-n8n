@@ -2,7 +2,6 @@ import 'server-only';
 import { readRanges, freeBusy, listEvents } from '../google/api';
 import { settings } from '../google/settings';
 import { clinicDefaults, checkSignal, AppError } from '../config';
-import { collection } from '../db';
 import { calculateDay, availabilityVersion } from './availability';
 import { currentWeek,localInstant } from '@/lib/availability';
 import { appointments, identity, startAt } from './appointments';
@@ -90,23 +89,14 @@ export async function clinicInfo(view = 'prompt', lang = 'en', signal?: AbortSig
   );
 }
 export async function clinicPrompt(signal?: AbortSignal) {
-  const cache = await collection<{ _id: string; block: string; fetchedAt: Date }>('clinic_cache');
-  const current = await cache.findOne({ _id: 'prompt' });
-  if (current && Date.now() - current.fetchedAt.getTime() < 300_000) return current.block;
+  // Read current settings for every turn: a cache populated during an admin
+  // update must never reintroduce the previous hours or service durations.
   try {
     const info = await clinicInfo('prompt', 'en', signal);
-    if (info.promptBlock) {
-      await cache.updateOne(
-        { _id: 'prompt' },
-        { $set: { block: info.promptBlock, fetchedAt: new Date() } },
-        { upsert: true },
-      );
-      return info.promptBlock;
-    }
+    if (info.promptBlock) return info.promptBlock;
   } catch {
     checkSignal(signal);
   }
-  if (current?.block) return current.block;
   return fallback
     .replace('{{clinicName}}', clinicDefaults().CLINIC_NAME)
     .replace('{{clinicPhone}}', clinicDefaults().CLINIC_PHONE);

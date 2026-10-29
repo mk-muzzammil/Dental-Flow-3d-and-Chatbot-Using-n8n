@@ -20,3 +20,10 @@ export function nextDays(n: number, tz = 'Asia/Karachi') {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   return Array.from({ length: n }, (_, i) => new Date(Date.parse(today + 'T12:00:00Z') + i * 86400000).toISOString().slice(0, 10));
 }
+
+
+const weekdayUrdu: Record<string, string> = {
+  Monday: 'پیر', Tuesday: 'منگل', Wednesday: 'بدھ', Thursday: 'جمعرات',
+  Friday: 'جمعہ', Saturday: 'ہفتہ', Sunday: 'اتوار',
+};
+export const weekdayLabel = (lang: Lang, day: string) => lang === 'ur' ? weekdayUrdu[day] || day : day;

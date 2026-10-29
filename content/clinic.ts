@@ -5,9 +5,10 @@ import type { ToothLook } from '@/components/three/look';
 type T = Record<Lang, string>;
 
 export type Service = { id: string; name: T; minutes: number; price: number; blurb: T };
-export type Dentist = { id: string; name: string; specialty: T; days: T; initials: string };
+export type Dentist = { id: string; name: string; specialty: T; days: T; initials: string; weeklyHours?: { day: string; open: string; close: string; breaks?: [string,string][] }[] };
 
 export const clinic = {
+  timezone: 'Asia/Karachi',
   name: { en: 'Smile Dental Clinic', ur: 'سمائل ڈینٹل کلینک', ar: 'عيادة سمايل لطب الأسنان' } as T,
   city: { en: 'Lahore', ur: 'لاہور', ar: 'لاهور' } as T,
   phone: '+923197010562',
@@ -16,9 +17,9 @@ export const clinic = {
   mapUrl: 'https://maps.google.com/?q=12+Main+Boulevard+Lahore',
   currency: 'PKR',
   hours: [
-    { day: { en: 'Monday to Thursday', ur: 'پیر تا جمعرات', ar: 'الاثنين إلى الخميس' } as T, time: '10:00 – 19:00' },
-    { day: { en: 'Friday', ur: 'جمعہ', ar: 'الجمعة' } as T, time: '10:00 – 19:00' },
-    { day: { en: 'Saturday', ur: 'ہفتہ', ar: 'السبت' } as T, time: '10:00 – 19:00' },
+    { day: { en: 'Monday to Thursday', ur: 'پیر تا جمعرات', ar: 'الاثنين إلى الخميس' } as T, time: '10:00 AM – 8:00 PM' },
+    { day: { en: 'Friday', ur: 'جمعہ', ar: 'الجمعة' } as T, time: '10:00 AM – 8:00 PM' },
+    { day: { en: 'Saturday', ur: 'ہفتہ', ar: 'السبت' } as T, time: '' },
     { day: { en: 'Sunday', ur: 'اتوار', ar: 'الأحد' } as T, time: '' },
   ],
 };
@@ -63,10 +64,12 @@ export const services: Service[] = [
 export const dentists: Dentist[] = [
   { id: 'dr-ayesha', name: 'Dr. Ayesha Khan', initials: 'AK',
     specialty: { en: 'General dentistry · Orthodontics', ur: 'جنرل ڈینٹسٹری · آرتھوڈانٹکس', ar: 'طب الأسنان العام · تقويم الأسنان' },
-    days: { en: 'Monday to Saturday', ur: 'پیر تا ہفتہ', ar: 'الاثنين إلى السبت' } },
+    weeklyHours: ['Monday','Tuesday','Wednesday','Thursday','Friday'].map(day => ({day,open:'10:00',close:'16:00'})),
+    days: { en: 'Monday to Friday', ur: 'پیر تا جمعہ', ar: 'الاثنين إلى الجمعة' } },
   { id: 'dr-bilal', name: 'Dr. Bilal Ahmed', initials: 'BA',
     specialty: { en: 'Root canal specialist', ur: 'روٹ کینال اسپیشلسٹ', ar: 'أخصائي علاج العصب والجذور' },
-    days: { en: 'Thursday to Saturday, afternoons', ur: 'جمعرات تا ہفتہ، دوپہر کے بعد', ar: 'الخميس إلى السبت، بعد الظهر' } },
+    weeklyHours: ['Monday','Tuesday','Wednesday','Thursday','Friday'].map(day => ({day,open:'15:00',close:'20:00'})),
+    days: { en: 'Monday to Friday', ur: 'پیر تا جمعہ', ar: 'الاثنين إلى الجمعة' } },
 ];
 
 /** Patient education reviewed against NHS dental check-up and treatment guidance. */

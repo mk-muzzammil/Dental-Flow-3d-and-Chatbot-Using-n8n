@@ -16,28 +16,27 @@ const TAIL = 0.6;           // a little extra scroll to finish the last animatio
 /** which bookable treatment each panel leads to (null: ask in the chat instead) */
 const SERVICE: (string | null)[] = [null, 'checkup', 'filling', 'whiten', null, null];
 
-export function Experience({ t, city }: { t: Dict; city: string }) {
+export function Experience({ t, city, openingDays }: { t: Dict; city: string; openingDays: string }) {
   const host = useRef<HTMLElement>(null);
-  const hero = useRef<HTMLDivElement>(null);
-  const [layout, setLayout] = useState({ viewport: 1, extra: 0 });
+  const [layout, setLayout] = useState({ viewport: 1, heights: Array<number>(STAGES).fill(1) });
   const reduce = !!useReducedMotion();
 
   useEffect(() => {
-    const panel = hero.current;
+    const panels = host.current?.querySelectorAll<HTMLElement>('[data-experience-panel]');
     const section = host.current;
     const nav = document.querySelector('header nav');
     const viewport = section?.querySelector<HTMLElement>('[data-scene-viewport]');
-    if (!panel || !section || !viewport) return;
+    if (!panels?.length || !section || !viewport) return;
     const measure = () => {
       // Include the fixed header's top inset and allow room for Nastaliq ascenders.
       section.style.setProperty('--hero-header-bottom', `${nav?.getBoundingClientRect().bottom ?? 80}px`);
       const height = viewport.offsetHeight;
-      const extra = Math.max(0, panel.offsetHeight - height);
-      setLayout(previous => previous.viewport === height && previous.extra === extra
-        ? previous : { viewport: height, extra });
+      const heights = Array.from(panels, panel => panel.offsetHeight);
+      setLayout(previous => previous.viewport === height && previous.heights.every((h, i) => h === heights[i])
+        ? previous : { viewport: height, heights });
     };
     const observer = new ResizeObserver(measure);
-    observer.observe(panel);
+    panels.forEach(panel => observer.observe(panel));
     observer.observe(viewport);
     if (nav) observer.observe(nav);
     window.addEventListener('resize', measure);
@@ -47,10 +46,15 @@ export function Experience({ t, city }: { t: Dict; city: string }) {
   const webgl = useWebGL();
   const { scrollYProgress } = useScroll({ target: host, offset: ['start start', 'end end'] });
   const stage = useTransform(scrollYProgress, p => {
-    const distance = p * ((STAGES - 1 + TAIL) * layout.viewport + layout.extra);
-    const heroHeight = layout.viewport + layout.extra;
-    // Longer translations can grow the welcome panel without shifting treatment cues.
-    return distance <= heroHeight ? distance / heroHeight : 1 + (distance - heroHeight) / layout.viewport;
+    const total = layout.heights.reduce((sum, height) => sum + height, 0);
+    const distance = p * (total + (TAIL - 1) * layout.viewport);
+    let start = 0;
+    for (let i = 0; i < layout.heights.length; i++) {
+      const height = layout.heights[i];
+      if (distance <= start + height) return i + (distance - start) / height;
+      start += height;
+    }
+    return STAGES - 1 + TAIL;
   });
   const [current, setCurrent] = useState(0);
   useMotionValueEvent(stage, 'change', v => { const c = Math.min(STAGES - 1, Math.round(v)); setCurrent(p => (p === c ? p : c)); });
@@ -58,7 +62,7 @@ export function Experience({ t, city }: { t: Dict; city: string }) {
   const stages = t.story.stages;
 
   return (
-    <section ref={host} id="experience" className="relative" style={{ height: `calc(${(STAGES + TAIL) * 100}svh + ${layout.extra}px)` }}>
+    <section ref={host} id="experience" className="relative" style={{ height: layout.viewport === 1 ? `${(STAGES + TAIL) * 100}svh` : layout.heights.reduce((sum, h) => sum + h, 0) + TAIL * layout.viewport }}>
       {/* the model, pinned while the panels scroll over it */}
       <div data-scene-viewport className="sticky top-0 h-svh overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(70%_60%_at_68%_45%,#ffffff_0%,#eef3f8_55%,var(--page-bg)_100%)]" />
@@ -85,7 +89,7 @@ export function Experience({ t, city }: { t: Dict; city: string }) {
       {/* the panels */}
       <div className="absolute inset-x-0 top-0">
         {/* 0: welcome */}
-        <div ref={hero} className="experience-hero flex items-end md:items-center">
+        <div data-experience-panel className="experience-hero flex items-end md:items-center">
           <div className="mx-auto w-full max-w-6xl px-5">
             <div className="max-w-xl">
               <p {...up(0)} className="rise eyebrow mb-6 flex items-center gap-3">
@@ -102,8 +106,8 @@ export function Experience({ t, city }: { t: Dict; city: string }) {
                   {t.hero.secondary}
                 </a>
               </div>
-              <ul {...up(5)} className="rise mt-10 hidden divide-x divide-line border-y border-line py-3 text-xs text-ink-soft sm:flex rtl:divide-x-reverse">
-                {t.hero.chips.map(c => <li key={c} className="px-4 first:ps-0">{c}</li>)}
+              <ul {...up(5)} className="rise mt-10 hidden flex-wrap gap-y-3 divide-x divide-line border-y border-line py-3 text-xs text-ink-soft sm:flex rtl:divide-x-reverse">
+                {[openingDays, ...t.hero.chips.slice(1)].map(c => <li key={c} className="px-4 first:ps-0">{c}</li>)}
               </ul>
             </div>
           </div>
@@ -113,27 +117,35 @@ export function Experience({ t, city }: { t: Dict; city: string }) {
         {stages.map((s, i) => {
           const service = SERVICE[i + 1];
           return (
-            <div key={s.title} className="flex h-svh items-end pb-10 md:items-center md:pb-0">
+            <div key={s.title} data-experience-panel className="experience-treatment flex items-end md:items-center">
               <div className="mx-auto w-full max-w-6xl px-5">
                 <motion.article
                   initial={reduce ? false : { opacity: 0, y: 40 }}
                   whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ amount: 0.6 }}
+                  viewport={{ amount: 0.15, once: true }}
                   transition={{ duration: 0.7, ease: [0.25, 1, 0.5, 1] }}
-                  className="max-w-md rounded-3xl bg-white/80 p-6 shadow-soft ring-1 ring-line backdrop-blur-xl md:bg-transparent md:p-0 md:shadow-none md:ring-0 md:backdrop-blur-none"
+                  className="experience-copy max-w-xl rounded-3xl bg-white/80 p-6 shadow-soft ring-1 ring-line backdrop-blur-xl md:bg-transparent md:p-0 md:shadow-none md:ring-0 md:backdrop-blur-none"
                 >
                   <p className="eyebrow mb-5 flex items-center gap-3">
                     <span className="num text-2xl tracking-normal text-brand normal-case">{String(i + 1).padStart(2, '0')}</span>
                     <span className="h-px w-10 bg-brand/40" />
                     {t.story.eyebrow}
                   </p>
-                  <h2 className="font-display text-balance text-4xl leading-[1.02] text-ink sm:text-6xl">{s.title}</h2>
-                  <p className="text-pretty mt-5 text-base leading-relaxed text-ink-soft sm:text-[17px]">{s.body}</p>
-                  <div className="mt-7">
+                  <h2 className="experience-treatment-title font-display text-balance text-[2.5rem] leading-[1.04] text-ink sm:text-5xl lg:text-[3.75rem]">
+                    {s.title}
+                    <span className="mt-2 block text-[0.82em] italic text-brand rtl:not-italic">{s.accent}</span>
+                  </h2>
+                  <p className="experience-description text-pretty mt-6 max-w-md text-[15px] leading-relaxed text-ink-soft sm:text-[17px]">{s.body}</p>
+                  <p className="experience-detail mt-4 max-w-md border-s-2 border-brand/25 ps-4 text-sm leading-relaxed text-muted">{s.detail}</p>
+                  <div className="mt-7 flex flex-wrap items-center gap-3">
                     {service
                       ? <OpenChatButton book={{ service }} className="px-5! py-3!">{t.story.book}<Arrow /></OpenChatButton>
-                      : <OpenChatButton variant="ghost" message={fill(t.story.askMsg, { topic: s.title.toLowerCase() })} className="px-5! py-3!">{t.story.ask}<Arrow /></OpenChatButton>}
+                      : <OpenChatButton variant="primary" message={fill(t.story.askMsg, { topic: s.title.toLowerCase() })} className="px-5! py-3!">{t.story.ask}<Arrow /></OpenChatButton>}
+                    {service && <OpenChatButton variant="ghost" message={fill(t.story.askMsg, { topic: s.title })} className="px-5! py-3!">{t.story.ask}</OpenChatButton>}
                   </div>
+                  <ul className="experience-points mt-7 flex flex-wrap gap-x-5 gap-y-3 border-y border-line py-3 text-xs text-ink-soft">
+                    {s.points.map(point => <li key={point} className="flex items-center gap-2"><span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-brand" />{point}</li>)}
+                  </ul>
                 </motion.article>
               </div>
             </div>

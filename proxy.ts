@@ -3,6 +3,12 @@ import { ACCESS_COOKIE, verifyAccess } from '@/lib/server/auth/jwt';
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  // Temporary language pause: preserve Arabic translations and old links, but show English.
+  if (path === '/ar' || path.startsWith('/ar/')) {
+    const target = request.nextUrl.clone();
+    target.pathname = path.replace(/^\/ar(?=\/|$)/, '/en');
+    return NextResponse.redirect(target, 307);
+  }
   if (['/admin/login', '/api/admin/auth/login', '/api/admin/auth/refresh'].includes(path))
     return NextResponse.next();
   try {
@@ -19,4 +25,4 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 }
-export const config = { matcher: ['/admin/:path*', '/api/admin/:path*'] };
+export const config = { matcher: ['/ar/:path*', '/admin/:path*', '/api/admin/:path*'] };

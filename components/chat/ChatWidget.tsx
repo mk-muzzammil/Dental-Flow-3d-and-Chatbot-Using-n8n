@@ -1,4 +1,5 @@
 'use client';
+import { LoadingIndicator } from '@/components/ui/LoadingIndicator';
 /**
  * THE CHAT WINDOW (bottom corner of every page).
  *
@@ -111,6 +112,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState(t.typing);
   const [draft, setDraft] = useState('');
   const [teaser, setTeaser] = useState(false);
   const session = useRef('');
@@ -169,6 +171,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
     const message = text.trim().slice(0, 1000);
     const attempt = { ...extra, idempotencyKey: extra.idempotencyKey || crypto.randomUUID() };
     if ((!message && !extra.audio) || busy) return;
+    setBusyLabel(t.typing);
     const before = msgsRef.current.filter(m => !m.error);
     const mine: Msg = extra.voice
       ? { id: uid(), role: 'user', text: t.voiceNote, voice: extra.voice }
@@ -199,7 +202,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
       setBusy(false);
       requestAnimationFrame(() => input.current?.focus({ preventScroll: true }));
     }
-  }, [busy, lang, t.error, t.voiceNote]);
+  }, [busy, lang, t.error, t.voiceNote, t.typing]);
 
   // the booking panel
   const [panel, setPanel] = useState<PanelStart | null>(null);
@@ -207,7 +210,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
     const moving=panel?.reschedule;
     if(moving)setMsgs(previous=>previous.map(m=>m.appts?{...m,appts:{...m.appts,items:m.appts.items.map(a=>a.reference===moving.reference?{...a,date:r.date,time:r.time,endTime:result.endTime,minutes:result.minutes ?? a.minutes}:a)}}:m));
     setPanel(null);
-    setMsgs(previous=>[...previous,{id:uid(),role:'user',text:t.bookingRequest,request:r},{id:uid(),role:'assistant',text:withFollowUp(lang==='ur'?'آپ کی اپائنٹمنٹ کی تصدیق ہوگئی ہے۔':'Your appointment is confirmed.',lang),booking:result,demo:result.demo}]);
+    setMsgs(previous=>[...previous,{id:uid(),role:'user',text:t.bookingRequest,request:r},{id:uid(),role:'assistant',text:withFollowUp(lang==='ur'?'آپ کی اپائنٹمنٹ کی تصدیق ہوگئی ہے۔':'Your appointment is confirmed.',lang),booking:{...result, service:r.serviceName, when:`${dayTitle(lang,r.date,true)} · ${clock(lang,r.time)}${result.endTime ? ` – ${clock(lang,result.endTime)}` : ''}`},demo:result.demo}]);
   };
 
   // "View My Appointments" / "Cancel an Appointment": handled here, never by the assistant
@@ -229,6 +232,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
   const phoneText = `\u2066${phone}\u2069`;
 
   const showAppointments = async (purpose: 'view' | 'cancel', value: Contact) => {
+    setBusyLabel(lang === "ur" ? "اپائنٹمنٹس لوڈ ہو رہی ہیں…" : lang === "ar" ? "جارٍ تحميل المواعيد…" : "Loading appointments…");
     setBusy(true);
     const r = await callAppointments({ action: 'list', contact: value });
     setBusy(false);
@@ -433,7 +437,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.96 }}
             transition={{ type: 'spring', stiffness: 320, damping: 30 }}
             style={{ transformOrigin: lang === 'en' ? 'bottom right' : 'bottom left' }}
-            className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-mist sm:inset-auto sm:end-6 sm:bottom-24 sm:h-[min(680px,calc(100svh-8rem))] sm:w-[400px] sm:rounded-[1.75rem] sm:shadow-[0_40px_100px_-30px_rgb(11_27_43/0.45)] sm:ring-1 sm:ring-black/5"
+            className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-mist sm:inset-auto sm:end-6 sm:bottom-24 sm:h-[min(680px,calc(100svh-8rem))] sm:w-[400px] sm:max-w-[calc(100vw-3rem)] sm:rounded-[1.75rem] sm:shadow-[0_40px_100px_-30px_rgb(11_27_43/0.45)] sm:ring-1 sm:ring-black/5"
           >
             {/* header */}
             <header className="relative flex shrink-0 items-center gap-3 bg-linear-to-br from-brand-deep via-brand to-accent px-4 pt-[max(0.9rem,env(safe-area-inset-top))] pb-4 text-white">
@@ -446,7 +450,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
                   {t.title}
                   {isDemo && <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-950">{t.demoBadge}</span>}
                 </h2>
-                <p className="text-xs text-white/75">{busy ? t.typing : t.status}</p>
+                <p className="text-xs text-white/75">{busy ? busyLabel : t.status}</p>
               </div>
               {msgs.length > 0 && (
                 <button type="button" onClick={restart} title={t.restart} aria-label={t.restart} className="grid h-9 w-9 place-items-center rounded-full transition hover:bg-white/15">
@@ -478,7 +482,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
                   )}
                   {m.error && m.detail && (
                     <p className="ms-10 rounded-xl bg-amber-50 px-3 py-2 font-mono text-[11px] leading-snug text-amber-900 ring-1 ring-amber-200" dir="ltr">
-                      For you (only shown on your computer): {m.detail}
+                      {lang === 'ur' ? 'تکنیکی تفصیل (صرف آپ کے کمپیوٹر پر):' : 'Technical detail (only shown on your computer):'} {m.detail}
                     </p>
                   )}
                   {m.error && m.retry && m === last && (
@@ -497,7 +501,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
                   {m.booking && <BookingCard b={m.booking} t={t} demo={m.demo} />}
                 </div>
               ))}
-              <AnimatePresence>{busy && <Typing label={t.typing} />}</AnimatePresence>
+              <AnimatePresence>{busy && <Typing label={busyLabel} />}</AnimatePresence>
               {isDemo && <p className="pt-1 text-center text-[11px] text-amber-700">{t.demo}</p>}
             </div>
 
@@ -526,7 +530,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
                         style={{ height: `${Math.max(12, Math.min(100, voice.level * 100 * (0.55 + 0.45 * Math.sin(i * 1.7 + voice.seconds))))}%` }} />
                     ))}
                   </span>
-                  <span className="hidden text-[11px] text-muted sm:inline">{voice.status === 'processing' ? '…' : `${t.voiceRecording} (${MAX_SECONDS}s)`}</span>
+                  <span className="min-w-0 text-[11px] text-muted">{voice.status === 'processing' ? <LoadingIndicator inline label={lang === "ur" ? "آواز تیار ہو رہی ہے…" : lang === "ar" ? "جارٍ معالجة الصوت…" : "Processing voice…"} /> : `${t.voiceRecording} (${MAX_SECONDS}s)`}</span>
                   <button type="button" onClick={voice.send} disabled={voice.status === 'processing'} aria-label={t.voiceStop}
                     className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ink text-white disabled:opacity-50">
                     <svg viewBox="0 0 20 20" className="h-4.5 w-4.5 rtl:-scale-x-100" aria-hidden="true"><path d="M3.5 10h12M11 5l5 5-5 5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -545,7 +549,7 @@ export function ChatWidget({ lang, t, phone, minWord }: { lang: Lang; t: Dict['c
                   onKeyDown={onKey}
                   placeholder={lookup ? t.contactPlaceholder : t.placeholder}
                   dir="auto"
-                  className="max-h-[120px] min-h-[40px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] leading-6 text-ink outline-none placeholder:text-muted focus-visible:outline-none"
+                  className="max-h-[120px] min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] leading-6 text-ink outline-none placeholder:text-muted focus-visible:outline-none"
                 />
                 {draft.trim() ? (
                   <motion.button type="submit" disabled={busy} whileTap={{ scale: 0.9 }} aria-label={t.send}

@@ -2,6 +2,7 @@
 import { tooth3d } from '@/content/clinic';
 import { publicClinic } from '@/lib/server/storage/public-clinic';
 import { fill, type Dict, type Lang } from '@/lib/i18n';
+import { clock, weekdayLabel } from '@/lib/slots';
 import { minutes, money } from '@/lib/format';
 import { Arrow, LogoMark, OpenChatButton, Reveal } from './ui';
 
@@ -68,6 +69,16 @@ export async function Dentists({ lang, t }: { lang: Lang; t: Dict }) {
                 <dl className="mt-8 flex-1 border-t border-line pt-5 text-sm">
                   <dt className="eyebrow text-muted!">{t.dentists.days}</dt>
                   <dd className="mt-1.5 text-ink">{d.days[lang]}</dd>
+                  {d.weeklyHours?.length ? <>
+                    <dt className="mt-4 font-semibold">{t.dentists.hours}</dt>
+                    <dd className="mt-2 space-y-2">
+                      {d.weeklyHours.map(h => <div key={h.day} className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                        <span>{weekdayLabel(lang, h.day)}</span>
+                        <span dir="ltr" className="tabular-nums">{clock(lang,h.open)} – {clock(lang,h.close)}</span>
+                        {h.breaks?.map(([from,to],i)=><small key={i} className="w-full text-muted">{t.dentists.break}: <bdi>{clock(lang,from)} – {clock(lang,to)}</bdi></small>)}
+                      </div>)}
+                    </dd>
+                  </> : null}
                 </dl>
                 <OpenChatButton variant="ghost" book={{ dentist: d.id }} className="mt-6 w-full justify-between">
                   {fill(t.dentists.book, { name: d.name })}<Arrow />
@@ -106,11 +117,12 @@ export async function Visit({ lang, t }: { lang: Lang; t: Dict }) {
       <div className="mt-12 grid gap-5 lg:grid-cols-[1fr_1.1fr]">
         <Reveal className="rounded-[1.75rem] bg-white p-7 ring-1 ring-line sm:p-9">
           <h3 className="eyebrow text-muted!">{t.visit.hours}</h3>
+          <p className="mt-2 text-xs text-muted" dir="ltr">{clinic.timezone}</p>
           <dl className="mt-4 divide-y divide-line">
             {clinic.hours.map(h => (
               <div key={h.day.en} className="flex items-center justify-between gap-4 py-4">
                 <dt className="text-ink">{h.day[lang]}</dt>
-                <dd className={`text-sm tabular-nums ${h.time ? 'text-ink-soft' : 'text-muted'}`} dir="ltr">{h.time || t.visit.closed}</dd>
+                <dd className={`text-sm tabular-nums ${h.time ? 'text-ink-soft' : 'text-muted'}`} dir="ltr">{(lang === 'ur' ? h.time.replace('break', 'وقفہ') : h.time) || t.visit.closed}</dd>
               </div>
             ))}
           </dl>

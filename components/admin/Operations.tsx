@@ -1,4 +1,5 @@
 'use client';
+import { LoadingIndicator } from '@/components/ui/LoadingIndicator';
 import { useAdminData, useClinicTime } from './client';
 type RecordView = {
   _id: string;
@@ -12,7 +13,7 @@ type RecordView = {
 };
 export function Operations() {
   const { displayTime } = useClinicTime();
-  const { data, error } = useAdminData<{ operations: RecordView[] }>('/api/admin/operations', true);
+  const { data, error, loading } = useAdminData<{ operations: RecordView[] }>('/api/admin/operations', true);
   return (
     <>
       <p className="eyebrow">RECOVERY</p>
@@ -32,7 +33,8 @@ export function Operations() {
           records before taking further action. A retry of the original booking request resumes its recorded
           steps.
         </p>
-        <div className="table-wrap">
+        {loading && <LoadingIndicator compact={!!data} label={data ? "Refreshing operations…" : "Loading operations…"} />}
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="Operations">
           <table>
             <thead>
               <tr>
@@ -64,7 +66,7 @@ export function Operations() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5}>{data ? 'No operations need review.' : 'Loading operations…'}</td>
+                  <td colSpan={5}>{loading ? null : data ? 'No operations need review.' : 'Operations unavailable.'}</td>
                 </tr>
               )}
             </tbody>

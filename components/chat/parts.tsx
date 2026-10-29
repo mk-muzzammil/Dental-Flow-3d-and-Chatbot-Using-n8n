@@ -1,4 +1,5 @@
 'use client';
+import { LoadingIndicator } from '@/components/ui/LoadingIndicator';
 /** The pieces of the chat window: formatted text, buttons, the scrolling cards, the typing dots and the booking card. */
 import { Fragment, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
@@ -51,7 +52,7 @@ export function QuickReplies({ items, onPick, disabled }: { items: QuickReply[];
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 * i, duration: 0.3 }}
-          className="rounded-full border border-brand/25 bg-white px-3.5 py-2 text-[13px] font-semibold text-brand-deep shadow-sm transition hover:border-brand hover:bg-brand hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+          className="min-h-11 rounded-full border border-brand/25 bg-white px-3.5 py-2 text-[13px] font-semibold text-brand-deep shadow-sm transition hover:border-brand hover:bg-brand hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
         >
           {q.title}
         </motion.button>
@@ -104,19 +105,8 @@ export function Carousel({ data, onPick, disabled }: { data: CarouselT; onPick: 
 /* ------------------------------------------------------------- typing */
 export function Typing({ label }: { label: string }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex items-end gap-2" role="status" aria-live="polite">
-      <Avatar />
-      <div className="rounded-2xl rounded-es-md bg-white px-4 py-3 shadow-sm ring-1 ring-line/70">
-        <span className="flex items-center gap-1" aria-hidden="true">
-          {[0, 1, 2].map(i => (
-            <motion.span key={i} className="h-1.5 w-1.5 rounded-full bg-brand/70"
-              animate={{ y: [0, -4, 0], opacity: [0.4, 1, 0.4] }}
-              transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15, ease: 'easeInOut' }} />
-          ))}
-        </span>
-        <span className="sr-only">{label}</span>
-      </div>
-      <span className="pb-1 text-[11px] text-muted" aria-hidden="true">{label}</span>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full rounded-2xl bg-white ring-1 ring-line/70">
+      <LoadingIndicator label={label} />
     </motion.div>
   );
 }

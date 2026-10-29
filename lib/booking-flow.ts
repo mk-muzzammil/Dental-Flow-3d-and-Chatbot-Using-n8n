@@ -18,6 +18,8 @@ export type TimeOption = {
   endsAt: string;
   doctor: string;
   doctorName: string;
+  doctorOpen?: string;
+  doctorClose?: string;
 };
 export type DayOption = {
   date: string;
@@ -32,6 +34,7 @@ export type AvailabilityAnswer = {
   durationMin: number;
   serviceName: string;
   days?: DayOption[];
+  byDoctor?: { doctor: string; doctorName: string; open: string; close: string; breaks?: [string,string][]; calendarReadable: boolean; slots: string[] }[];
   options: TimeOption[];
   reason?: string;
 };
@@ -67,6 +70,22 @@ export const slotError = (code: string, urdu = false) => {
     ? {
         "nothing-free-this-week":
           "اس ہفتے کوئی وقت دستیاب نہیں۔ براہِ کرم کلینک سے رابطہ کریں۔",
+        "too-many": "اس نمبر پر پہلے ہی دو آنے والی اپائنٹمنٹس موجود ہیں۔ اپنی اپائنٹمنٹس دیکھیں یا کلینک سے رابطہ کریں۔",
+        "invalid-name": "مریض کا پورا نام درج کریں۔",
+        "invalid-phone": "درست موبائل نمبر درج کریں۔",
+        "invalid-email": "درست ای میل پتہ درج کریں۔",
+        outcome_uncertain: "بکنگ کا نتیجہ ابھی چیک ہو رہا ہے۔ نئی بکنگ سے پہلے یہی درخواست دوبارہ آزمائیں یا کلینک سے رابطہ کریں۔",
+        "booking-update-pending": "وقت کی تبدیلی ابھی مکمل ہو رہی ہے۔ پہلے نامکمل تبدیلی مکمل کریں۔",
+        "off-grid": "فہرست میں موجود وقت منتخب کریں۔",
+        "outside-hours": "اپائنٹمنٹ اوقات کار سے باہر ہو گی۔ دوسرا وقت منتخب کریں۔",
+        "invalid-date-time": "فہرست سے درست دن اور وقت منتخب کریں۔",
+        "outside-current-week": "اسی ہفتے کا دن منتخب کریں۔",
+        "fully-booked": "اس دن اس علاج کے لیے کوئی وقت دستیاب نہیں۔",
+        "slot-taken": "یہ وقت ابھی بک ہو گیا ہے۔ دوسرا وقت منتخب کریں۔",
+        "invalid-duration": "اس علاج کا دورانیہ درست کرنا ضروری ہے۔ کلینک سے رابطہ کریں۔",
+        "service-inactive": "یہ علاج اب دستیاب نہیں ہے۔",
+        unavailable: "کیلنڈر چیک نہیں ہو سکا۔ دوبارہ کوشش کریں۔",
+        already_running: "ایک اور بکنگ پر کام جاری ہے۔ تھوڑی دیر بعد کوشش کریں۔",
         closed: "اس دن کلینک بند ہے۔",
         past: "یہ وقت گزر چکا ہے۔ دوسرا وقت منتخب کریں۔",
         "configuration-changed":

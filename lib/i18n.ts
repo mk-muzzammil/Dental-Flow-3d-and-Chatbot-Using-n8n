@@ -4,13 +4,16 @@
  * Arabic wording is gender-neutral (the reader may be a man or a woman).
  */
 export const LANGS = ['en', 'ur', 'ar'] as const;
+// Arabic translations are retained, but public Arabic navigation is temporarily disabled.
+export const PUBLIC_LANGS = ['en', 'ur' /*, 'ar' */] as const;
+export const isPublicLang = (value: string) => (PUBLIC_LANGS as readonly string[]).includes(value);
 export type Lang = (typeof LANGS)[number];
 export const isLang = (v: string): v is Lang => (LANGS as readonly string[]).includes(v);
 export const dirOf = (l: Lang) => (l === 'en' ? 'ltr' : 'rtl');
 export const langLabel: Record<Lang, string> = { en: 'English', ur: 'اردو', ar: 'العربية' };
 
 const en = {
-  meta: { title: 'Calm, precise dentistry, booked in a minute', description: 'Several dental specialists under one roof. Book in our chat in English, Urdu or Arabic, with immediate confirmation in the chat and a copy by email.' },
+  meta: { title: 'Calm, precise dentistry, booked in a minute', description: 'Several dental specialists under one roof. Book in our chat in English or Urdu, with immediate confirmation in the chat and a copy by email.' },
   nav: { treatments: 'Treatments', dentists: 'Dentists', how: 'How it works', visit: 'Visit', faq: 'FAQ', book: 'Book now', menu: 'Menu', language: 'Language' },
   hero: {
     eyebrow: 'Dental care in {city}',
@@ -18,26 +21,26 @@ const en = {
     title2: 'Booked in a minute.',
     sub: 'Several specialists under one roof. Choose a time in our chat, confirm your appointment, and receive a copy by email.',
     cta: 'Book in chat', secondary: 'Explore treatments',
-    chips: ['Open 6 days a week', 'English · اردو · العربية', 'Confirmed in the chat'],
+    chips: ['Monday to Friday', 'English · اردو', 'Confirmed in the chat'],
     scroll: 'Scroll',
   },
   story: {
     eyebrow: 'What we do',
     stages: [
-      { title: 'Check-ups and cleaning', body: 'Every visit starts with a careful look. Scaling and polishing remove what brushing can’t reach.' },
-      { title: 'Fillings and root canals', body: 'Tooth-coloured materials, matched to you, and root-canal specialists who explain every step before they begin.' },
-      { title: 'Whitening', body: 'A visibly brighter smile in a single visit, done safely under a dentist’s supervision.' },
-      { title: 'Braces and aligners', body: 'Orthodontic care for children and adults, including clear aligners when you’d rather nobody noticed.' },
-      { title: 'Implants', body: 'A missing tooth replaced with a titanium implant and a natural-looking crown that feels like your own.' },
+      { title: "Check-ups and cleaning", accent: "A fresh start for your smile.", body: "Make time for the everyday care your smile deserves. Tell us about any concerns, explore check-up and cleaning options, and choose an appointment that fits your day.", detail: "Start with a check-up if you are unsure which treatment to choose. Your dentist can explain the next steps after examining your teeth.", points: ["Discuss your concerns", "Plan your next steps"] },
+      { title: "Fillings and root canals", accent: "Understand your options.", body: "A damaged or uncomfortable tooth can leave you with plenty of questions. Start a conversation about fillings or root canal treatment and arrange a visit to discuss your concerns with a dentist.", detail: "Tell the assistant which treatment you want to ask about. The dentist confirms the appropriate care and final cost after an examination.", points: ["Ask before you book", "Care explained clearly"] },
+      { title: "Whitening", accent: "Your smile, your questions.", body: "Thinking about a brighter smile? Ask about whitening, share what you hope to change, and book time to discuss your options. A conversation with the dentist helps you understand what to expect.", detail: "Use the chat to ask about the visit and available appointments. Suitability, expected results and cost are discussed with your dentist.", points: ["Discuss your goals", "Know what to expect"] },
+      { title: "Braces and aligners", accent: "A plan that starts with you.", body: "Explore options for a straighter smile without having to decide on a treatment today. Ask about braces or clear aligners and tell us what you would like to discuss at your visit.", detail: "The assistant can help with clinic information and booking questions. Your dentist will discuss treatment suitability and the next steps with you.", points: ["Explore your options", "Ask about a consultation"] },
+      { title: "Implants", accent: "Explore your next step.", body: "Replacing a missing tooth starts with understanding the options. Ask about implant consultations, share your questions, and find out how to arrange a visit with the clinic.", detail: "A consultation is the place to discuss your individual needs, possible treatment stages and costs. You can ask the assistant about arranging that first conversation.", points: ["Start with your questions", "Discuss a treatment plan"] },
     ],
     book: 'Book this treatment', ask: 'Ask about this', askMsg: 'I’d like to know more about {topic}', scroll: 'Scroll to explore',
   },
   treatments: { eyebrow: 'Treatments', title: 'Clear prices, before you book', note: 'The dentist confirms the final cost after examining you.', min: 'min', book: 'Book this' },
-  dentists: { eyebrow: 'Our team', title: 'Specialists under one roof', days: 'In clinic', book: 'Book with {name}' },
+  dentists: { eyebrow: 'Our team', title: 'Specialists under one roof', days: 'In clinic', hours: 'Working hours', break: 'Break', book: 'Book with {name}' },
   how: {
     eyebrow: 'How it works', title: 'Booking takes about a minute',
     steps: [
-      { title: 'Tell the assistant what you need', body: 'In English, Urdu or Arabic, at any hour.' },
+      { title: 'Tell the assistant what you need', body: 'In English or Urdu, at any hour.' },
       { title: 'Tap a time that suits you', body: 'Real free times across the coming week, each with the dentist’s name.' },
       { title: 'Get it in writing', body: 'Your appointment is confirmed in the chat, with a confirmation copy sent by email.' },
     ],
@@ -99,7 +102,7 @@ const en = {
 type Dict = typeof en;
 
 const ur: Dict = {
-  meta: { title: 'پُرسکون اور ماہرانہ دندان سازی، ایک منٹ میں بکنگ', description: 'ایک ہی چھت تلے دانتوں کے کئی اسپیشلسٹ۔ ہماری چیٹ میں انگریزی، اردو یا عربی میں بکنگ کریں، چیٹ میں فوری کنفرمیشن اور ای میل پر نقل کے ساتھ۔' },
+  meta: { title: 'پُرسکون اور ماہرانہ دندان سازی، ایک منٹ میں بکنگ', description: 'ایک ہی چھت تلے دانتوں کے کئی اسپیشلسٹ۔ ہماری چیٹ میں انگریزی یا اردو میں بکنگ کریں، چیٹ میں فوری کنفرمیشن اور ای میل پر نقل کے ساتھ۔' },
   nav: { treatments: 'علاج', dentists: 'ڈاکٹرز', how: 'طریقہ کار', visit: 'پتہ', faq: 'سوالات', book: 'ابھی بک کریں', menu: 'مینو', language: 'زبان' },
   hero: {
     eyebrow: '{city} میں دانتوں کی دیکھ بھال',
@@ -107,26 +110,26 @@ const ur: Dict = {
     title2: 'ایک منٹ میں بکنگ۔',
     sub: 'ایک ہی چھت تلے کئی اسپیشلسٹ۔ ہماری چیٹ میں وقت منتخب کریں، چیٹ میں اپائنٹمنٹ کنفرم کریں اور ای میل پر اس کی نقل حاصل کریں۔',
     cta: 'چیٹ میں بک کریں', secondary: 'علاج دیکھیں',
-    chips: ['ہفتے میں 6 دن کھلا', 'English · اردو · العربية', 'چیٹ میں کنفرمیشن'],
+    chips: ['پیر سے جمعہ', 'English · اردو', 'چیٹ میں کنفرمیشن'],
     scroll: 'نیچے دیکھیں',
   },
   story: {
     eyebrow: 'ہماری خدمات',
     stages: [
-      { title: 'چیک اپ اور صفائی', body: 'ہر وزٹ کا آغاز تفصیلی معائنے سے ہوتا ہے۔ سکیلنگ اور پالش وہ میل صاف کرتی ہے جو برش سے نہیں نکلتا۔' },
-      { title: 'فلنگ اور روٹ کینال', body: 'دانت کے رنگ کا میٹیریل، آپ کے دانت سے ملتا ہوا، اور روٹ کینال اسپیشلسٹ جو ہر مرحلہ پہلے سمجھاتے ہیں۔' },
-      { title: 'دانت سفید کرنا', body: 'ایک ہی وزٹ میں نمایاں طور پر روشن مسکراہٹ، ڈاکٹر کی نگرانی میں محفوظ طریقے سے۔' },
-      { title: 'بریسز اور الائنرز', body: 'بچوں اور بڑوں کے لیے آرتھوڈانٹک علاج، جن میں شفاف الائنرز بھی شامل ہیں جو کسی کو نظر نہیں آتے۔' },
-      { title: 'ڈینٹل امپلانٹس', body: 'گمشدہ دانت کی جگہ ٹائٹینیم امپلانٹ اور قدرتی نظر آنے والا کراؤن، جو بالکل اپنے دانت جیسا محسوس ہو۔' },
+      { title: "چیک اپ اور صفائی", accent: "مسکراہٹ کی دیکھ بھال سے آغاز۔", body: "اپنے دانتوں کی روزمرہ دیکھ بھال کے لیے وقت نکالیں۔ اپنی پریشانی بتائیں، چیک اپ اور صفائی کے بارے میں جانیں اور اپنی سہولت کے مطابق اپائنٹمنٹ منتخب کریں۔", detail: "اگر علاج کے انتخاب میں الجھن ہے تو چیک اپ سے آغاز کریں۔ دانتوں کے معائنے کے بعد ڈاکٹر آپ کو اگلے مراحل سمجھا سکتے ہیں۔", points: ["اپنی پریشانی بتائیں", "اگلا قدم سمجھیں"] },
+      { title: "فلنگ اور روٹ کینال", accent: "اپنے علاج کے بارے میں جانیں۔", body: "خراب یا تکلیف دینے والے دانت کے بارے میں سوال ہونا فطری ہے۔ فلنگ یا روٹ کینال کے متعلق پوچھیں اور ڈاکٹر سے اپنی پریشانی پر بات کرنے کے لیے وقت لیں۔", detail: "اسسٹنٹ کو بتائیں کہ آپ کس علاج کے متعلق جاننا چاہتے ہیں۔ معائنے کے بعد ڈاکٹر مناسب علاج اور حتمی قیمت بتائیں گے۔", points: ["بکنگ سے پہلے سوال کریں", "علاج کی واضح معلومات"] },
+      { title: "دانت سفید کرنا", accent: "آپ کی مسکراہٹ، آپ کے سوال۔", body: "کیا آپ زیادہ روشن مسکراہٹ چاہتے ہیں؟ دانت سفید کرنے کے بارے میں پوچھیں، اپنی توقعات بتائیں اور ڈاکٹر سے دستیاب طریقوں پر بات کرنے کے لیے وقت منتخب کریں۔", detail: "چیٹ میں وزٹ اور دستیاب اپائنٹمنٹس کے بارے میں پوچھیں۔ علاج کی موزونیت، متوقع نتائج اور قیمت پر ڈاکٹر سے بات کریں۔", points: ["اپنی توقعات بتائیں", "وزٹ کے بارے میں جانیں"] },
+      { title: "بریسز اور الائنرز", accent: "منصوبہ آپ کی ضرورت کے مطابق۔", body: "ابھی علاج کا فیصلہ کیے بغیر دانت سیدھے کرنے کے طریقوں کے بارے میں جانیں۔ بریسز یا شفاف الائنرز کے متعلق پوچھیں اور بتائیں کہ وزٹ میں کس موضوع پر بات کرنا چاہتے ہیں۔", detail: "اسسٹنٹ کلینک اور بکنگ کی معلومات دے سکتا ہے۔ ڈاکٹر علاج کی موزونیت اور اگلے مراحل پر آپ سے بات کریں گے۔", points: ["دستیاب طریقے جانیں", "مشورے کے لیے پوچھیں"] },
+      { title: "ڈینٹل امپلانٹس", accent: "اگلے قدم کے بارے میں جانیں۔", body: "گمشدہ دانت کی جگہ نئے دانت کے لیے پہلے دستیاب طریقوں کو سمجھیں۔ امپلانٹ کے مشورے سے متعلق سوال کریں اور کلینک میں وزٹ طے کرنے کا طریقہ جانیں۔", detail: "مشورے کے دوران اپنی ضروریات، علاج کے ممکنہ مراحل اور قیمت پر بات کریں۔ پہلی ملاقات طے کرنے کے بارے میں اسسٹنٹ سے پوچھ سکتے ہیں۔", points: ["اپنے سوالات سے آغاز", "علاج کے منصوبے پر بات"] },
     ],
     book: 'یہ علاج بک کریں', ask: 'اس کے بارے میں پوچھیں', askMsg: 'مجھے {topic} کے بارے میں مزید جاننا ہے', scroll: 'دیکھنے کے لیے نیچے جائیں',
   },
   treatments: { eyebrow: 'علاج', title: 'بکنگ سے پہلے واضح قیمتیں', note: 'حتمی قیمت ڈاکٹر معائنے کے بعد بتاتے ہیں۔', min: 'منٹ', book: 'یہ بک کریں' },
-  dentists: { eyebrow: 'ہماری ٹیم', title: 'ایک ہی چھت تلے اسپیشلسٹ', days: 'کلینک میں', book: '{name} کے ساتھ بک کریں' },
+  dentists: { eyebrow: 'ہماری ٹیم', title: 'ایک ہی چھت تلے اسپیشلسٹ', days: 'کلینک میں', hours: 'اوقات کار', break: 'وقفہ', book: '{name} کے ساتھ بک کریں' },
   how: {
     eyebrow: 'طریقہ کار', title: 'بکنگ میں تقریباً ایک منٹ لگتا ہے',
     steps: [
-      { title: 'اسسٹنٹ کو اپنی ضرورت بتائیں', body: 'انگریزی، اردو یا عربی میں، کسی بھی وقت۔' },
+      { title: 'اسسٹنٹ کو اپنی ضرورت بتائیں', body: 'انگریزی یا اردو میں، کسی بھی وقت۔' },
       { title: 'اپنی سہولت کا وقت منتخب کریں', body: 'اگلے ہفتے کے اصل خالی اوقات، ہر ایک کے ساتھ ڈاکٹر کا نام۔' },
       { title: 'تحریری کنفرمیشن حاصل کریں', body: 'اپائنٹمنٹ چیٹ میں کنفرم ہوتی ہے اور ای میل پر اس کی نقل بھیجی جاتی ہے۔' },
     ],
@@ -200,16 +203,16 @@ const ar: Dict = {
   story: {
     eyebrow: 'خدماتنا',
     stages: [
-      { title: 'الفحص والتنظيف', body: 'تبدأ كل زيارة بفحص دقيق، ويزيل التنظيف والتلميع ما لا تصل إليه الفرشاة.' },
-      { title: 'الحشوات وعلاج العصب', body: 'مواد بلون الأسنان تتطابق مع سنّك، وأخصائيون في علاج العصب يشرحون كل خطوة قبل البدء.' },
-      { title: 'التبييض', body: 'ابتسامة أكثر إشراقاً بوضوح في زيارة واحدة، وبأمان تحت إشراف الطبيب.' },
-      { title: 'التقويم والمصففات الشفافة', body: 'علاج تقويمي للأطفال والكبار، ومن خياراته مصففات شفافة لا يلاحظها أحد.' },
-      { title: 'زراعة الأسنان', body: 'تعويض السن المفقودة بزرعة من التيتانيوم وتاج طبيعي المظهر يبدو كأسنانك تماماً.' },
+      { title: 'الفحص والتنظيف', body: 'تبدأ كل زيارة بفحص دقيق، ويزيل التنظيف والتلميع ما لا تصل إليه الفرشاة.', accent: "العناية بابتسامتك تبدأ هنا.", detail: "يمكنك السؤال عن الزيارة والمواعيد المتاحة قبل الحجز.", points: ["ناقش أسئلتك", "خطط للخطوة التالية"] },
+      { title: 'الحشوات وعلاج العصب', body: 'مواد بلون الأسنان تتطابق مع سنّك، وأخصائيون في علاج العصب يشرحون كل خطوة قبل البدء.', accent: "تعرّف على خياراتك.", detail: "ناقش العلاج المناسب والتكلفة مع الطبيب بعد الفحص.", points: ["اسأل قبل الحجز", "افهم خطوات العلاج"] },
+      { title: 'التبييض', body: 'ابتسامة أكثر إشراقاً بوضوح في زيارة واحدة، وبأمان تحت إشراف الطبيب.', accent: "ابتسامتك وأسئلتك.", detail: "ناقش توقعاتك ومدى ملاءمة العلاج مع الطبيب.", points: ["ناقش أهدافك", "تعرّف على الزيارة"] },
+      { title: 'التقويم والمصففات الشفافة', body: 'علاج تقويمي للأطفال والكبار، ومن خياراته مصففات شفافة لا يلاحظها أحد.', accent: "خطة تبدأ باحتياجاتك.", detail: "اسأل عن الاستشارة لمناقشة الخيارات والخطوات التالية.", points: ["استكشف الخيارات", "اسأل عن الاستشارة"] },
+      { title: 'زراعة الأسنان', body: 'تعويض السن المفقودة بزرعة من التيتانيوم وتاج طبيعي المظهر يبدو كأسنانك تماماً.', accent: "استكشف الخطوة التالية.", detail: "ناقش احتياجاتك ومراحل العلاج والتكلفة في الاستشارة.", points: ["ابدأ بأسئلتك", "ناقش خطة العلاج"] },
     ],
     book: 'حجز هذا العلاج', ask: 'الاستفسار عن هذا العلاج', askMsg: 'أرغب في معرفة المزيد عن {topic}', scroll: 'مرّر للاستكشاف',
   },
   treatments: { eyebrow: 'العلاجات', title: 'أسعار واضحة قبل الحجز', note: 'يؤكد الطبيب التكلفة النهائية بعد الفحص.', min: 'دقيقة', book: 'حجز هذا العلاج' },
-  dentists: { eyebrow: 'فريقنا', title: 'أخصائيون تحت سقف واحد', days: 'أيام التواجد', book: 'الحجز مع {name}' },
+  dentists: { eyebrow: 'فريقنا', title: 'أخصائيون تحت سقف واحد', days: 'أيام التواجد', hours: 'ساعات العمل', break: 'استراحة', book: 'الحجز مع {name}' },
   how: {
     eyebrow: 'طريقة الحجز', title: 'يستغرق الحجز دقيقة تقريباً',
     steps: [

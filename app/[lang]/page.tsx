@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
-import { dictionaries, isLang } from '@/lib/i18n';
+import { dictionaries, isLang, isPublicLang } from '@/lib/i18n';
 import { publicClinic } from '@/lib/server/storage/public-clinic';
+import { ClinicRefresh } from '@/components/ClinicRefresh';
 import { ClinicProvider } from '@/components/ClinicProvider';
 export const dynamic = 'force-dynamic';
 import { Nav } from '@/components/sections/Nav';
@@ -10,15 +11,16 @@ import { ChatWidget } from '@/components/chat/ChatWidget';
 
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
-  if (!isLang(lang)) notFound();
+  if (!isLang(lang) || !isPublicLang(lang)) notFound();
   const t = dictionaries[lang];
   const data = await publicClinic();
   const { clinic } = data;
   return (
     <>
+      <ClinicRefresh />
       <Nav lang={lang} t={t} clinicName={clinic.name[lang]} />
       <main>
-        <Experience t={t} city={clinic.city[lang]} />
+        <Experience t={t} city={clinic.city[lang]} openingDays={clinic.hours.filter(h => h.time).map(h => h.day[lang]).join(lang === 'ur' ? '، ' : ' · ') || t.visit.closed} />
         <Treatments lang={lang} t={t} />
         <Dentists lang={lang} t={t} />
         <How t={t} />

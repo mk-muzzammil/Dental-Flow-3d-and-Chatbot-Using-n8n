@@ -397,6 +397,21 @@ try {
   assert.equal(winners.length,1);assert.equal(events.size,1);
   await act.cancelBooking(winners[0].value.reference,{contact:{phone:input.phone}});assert.equal(events.size,0);
   console.log('PASS: concurrent booking requests produce one appointment; interrupted rescheduling resumes safely; admin conflicts are detected.');
+  // Admin configuration is authoritative even when an old prompt cache exists.
+  await (await db.collection('clinic_cache')).updateOne({_id:'prompt'}, {$set:{block:'OLD 45 min 10:00-20:00',fetchedAt:new Date()}}, {upsert:true});
+  const changed = structuredClone(config);
+  changed.services[0][2] = 60;
+  changed.hours = changed.hours.map(r => [r[0], '11:00', '18:00', '', '', r[0] === 'Sunday', '']);
+  await (await db.collection('clinic_configuration')).updateOne({_id:sid},{$set:{configuration:changed,updatedAt:new Date()}});
+  const refreshed = await pub.publicClinic();
+  assert.equal(refreshed.services[0].minutes,60);
+  assert.equal(refreshed.clinic.hours.find(h=>h.day.en==='Monday').time,'11:00 AM – 6:00 PM');
+  assert.equal(refreshed.clinic.hours.find(h=>h.day.en==='Sunday').time,'');
+  const refreshedPrompt = await clinic.clinicPrompt();
+  assert.match(refreshedPrompt,/60 min/);
+  assert.match(refreshedPrompt,/Monday 11:00-18:00/);
+  assert.doesNotMatch(refreshedPrompt,/OLD|45 min|10:00-20:00/);
+  console.log('PASS: updated admin hours/durations reach public pages and chat despite a stale prompt cache.');
   await (
     await db.collection("clinic_configuration")
   ).updateOne({ _id: sid }, { $set: { state: "migrating" } });

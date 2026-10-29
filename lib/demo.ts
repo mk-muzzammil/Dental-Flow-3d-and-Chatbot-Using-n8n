@@ -5,7 +5,8 @@
  * details, confirm) and books nothing.
  */
 import { clinic, dentists, services } from '@/content/clinic';
-import { dictionaries, isLang, type Lang } from './i18n';
+import { dictionaries, type Lang } from './i18n';
+import { replyLanguage } from './chat-language';
 import { LOCALE, minutes, money } from './format';
 import type { ChatRequest, ChatResponse, DemoState } from './chat-types';
 
@@ -27,20 +28,20 @@ const S = {
     manage: 'You can see or cancel your appointments right here in the chat. Tap one of these:',
   },
   ur: {
-    which: 'آپ کون سا علاج کروانا چاہتے ہیں؟ کسی ایک پر ٹیپ کریں یا اپنے الفاظ میں بتائیں۔',
-    treatments: 'علاج', times: 'دستیاب اوقات',
-    timesFor: '*{service}*{dentist} کے لیے اگلے دستیاب اوقات یہ ہیں۔ جو وقت مناسب ہو اس پر ٹیپ کریں:',
-    withDentist: ' ({name} کے ساتھ)',
-    details: '*{slot}* بہت خوب۔ یہ وقت محفوظ کرنے کے لیے مریض کا *پورا نام*، *موبائل نمبر* اور *ای میل* ایک ہی پیغام میں بھیج دیں۔',
-    check: 'براہِ کرم اپنی بکنگ چیک کر لیں:', treatment: 'علاج', when: 'وقت', patient: 'مریض',
-    confirm: 'کنفرم کریں', change: 'تبدیل کریں',
-    done: 'آپ کی بکنگ ہو گئی! کنفرمیشن ای میل پر بھیجی جا رہی ہے۔ (ڈیمو: اصل میں کوئی بکنگ نہیں ہوئی۔)',
-    hours: '*کلینک کے اوقات*', closed: 'بند', find: 'ہمارا پتہ: {address}',
-    talk: 'آپ کلینک کو اس نمبر پر کال کر سکتے ہیں: *{phone}*۔ کیا میں آپ کی اپائنٹمنٹ بک کر دوں؟',
-    book: 'اپائنٹمنٹ بک کریں',
-    voice: 'ڈیمو موڈ: ویب سائٹ کلینک سے منسلک ہونے کے بعد وائس میسج سمجھے جائیں گے۔ فی الحال براہِ کرم اپنا پیغام لکھیں۔',
-    formDone: 'بکنگ ہو گئی! (ڈیمو: اصل میں کوئی بکنگ نہیں ہوئی۔)',
-    manage: 'آپ اپنی اپائنٹمنٹس یہیں چیٹ میں دیکھ یا منسوخ کر سکتے ہیں۔ ان میں سے کسی ایک پر ٹیپ کریں:',
+    which: 'Aap kaunsa ilaaj karwana chahte hain? Koi option chunein ya apne alfaaz mein batayein.',
+    treatments: 'Ilaaj', times: 'Available times',
+    timesFor: '*{service}*{dentist} ke liye yeh times available hain. Kaunsa waqt munasib hai?',
+    withDentist: ' ({name} ke saath)',
+    details: '*{slot}* ke liye patient ka *poora naam*, *mobile number* aur *email* batayein.',
+    check: 'Apni booking check kar lein:', treatment: 'Ilaaj', when: 'Waqt', patient: 'Patient',
+    confirm: 'Confirm', change: 'Tabdeel karein',
+    done: 'Demo booking mukammal hai. Asal appointment book nahi hui aur email nahi bheji gayi.',
+    hours: '*Clinic ke auqat*', closed: 'Band', find: 'Hamara pata: {address}',
+    talk: 'Aap clinic ko *{phone}* par call kar sakte hain. Kya appointment book karna chahenge?',
+    book: 'Appointment book karein',
+    voice: 'Demo mode mein voice messages process nahi hote. Filhaal apna paigham type karein.',
+    formDone: 'Demo booking mukammal hai. Asal appointment book nahi hui.',
+    manage: 'Aap apni appointments yahin dekh ya cancel kar sakte hain. Kaunsa option chahenge?',
   },
   ar: {
     which: 'ما العلاج المطلوب؟ يمكن اختيار أحد الخيارات أو كتابته بكلماتك.',
@@ -92,26 +93,27 @@ function slots(lang: Lang, dentistId?: string) {
   return out;
 }
 
-const base = (lang: Lang, state: DemoState): ChatResponse => ({
+const base = (lang: string, state: DemoState): ChatResponse => ({
   ok: true, reply: '', quickReplies: [], carousel: null, booking: null, note: '', lang, demo: true, demoState: state,
 });
 
 export function demoReply(req: ChatRequest): ChatResponse {
-  const lang: Lang = isLang(req.lang) ? req.lang : 'en';
-  const s = S[lang];
+  const responseLanguage = replyLanguage(req.message, req.lang, req.history);
+  const lang: Lang = 'en'; // Proper names and dates in Roman Urdu use Latin characters.
+  const s = S[responseLanguage === 'roman-ur' ? 'ur' : 'en'];
   const t = dictionaries[lang];
   const msg = req.message;
   const st: DemoState = req.demoState && typeof req.demoState === 'object' ? req.demoState : { step: 'start' };
   const starters = t.chat.starters;
 
   // A voice message: understood only once the site is in live mode
-  if (req.audio) return { ...base(lang, st), reply: s.voice, heard: '' };
+  if (req.audio) return { ...base(responseLanguage, st), reply: s.voice, heard: '' };
 
   // The booking panel: the visitor already chose everything and confirmed
   if (/^BOOKING FORM/.test(msg)) {
     const field = (k: string) => (msg.match(new RegExp(`^${k}: (.*)$`, 'm'))?.[1] ?? '').replace(/\s*\(id [^)]*\)\s*$/, '').trim();
     const when = `${field('Date').replace(/^\S+\s*\(|\)$/g, '')} · ${field('Time').replace(/^\S+\s*\(|\)$/g, '')}`;
-    return { ...base(lang, { step: 'start' }), reply: s.formDone,
+    return { ...base(responseLanguage, { step: 'start' }), reply: s.formDone,
       booking: { reference: 'DEMO-' + Math.random().toString(36).slice(2, 6).toUpperCase(), when, service: field('Treatment'),
         dentist: field('Dentist'), whatsappSent: false, emailCopy: true } };
   }
@@ -119,20 +121,20 @@ export function demoReply(req: ChatRequest): ChatResponse {
   // Questions that can come at any point
   // Seeing or cancelling an appointment happens in the chat window itself: offer its two buttons
   if (/\b(cancel|cancell?ation|my appointments?|my booking|reschedule)\b/i.test(msg) || /منسوخ|کینسل|إلغاء|مواعيدي|میری اپائنٹمنٹ/.test(msg)) {
-    return { ...base(lang, { step: 'start' }), reply: s.manage,
+    return { ...base(responseLanguage, { step: 'start' }), reply: s.manage,
       quickReplies: [{ title: starters[1], value: starters[1] }, { title: starters[2], value: starters[2] }] };
   }
   if (/\b(hours?|open|timings?|location|address|where)\b/i.test(msg) || /اوقات|پتہ|ساعات|العنوان|الموقع/.test(msg)) {
     const hours = clinic.hours.map(h => `${h.day[lang]}: ${h.time || s.closed}`).join('\n');
-    return { ...base(lang, { step: 'start' }), reply: `${s.hours}\n${hours}\n\n${fill(s.find, { address: clinic.address[lang] })}`,
+    return { ...base(responseLanguage, { step: 'start' }), reply: `${s.hours}\n${hours}\n\n${fill(s.find, { address: clinic.address[lang] })}`,
       quickReplies: [{ title: s.book, value: s.book }] };
   }
   if (/\b(human|person|staff|call|talk)\b/i.test(msg)) {
-    return { ...base(lang, { step: 'start' }), reply: fill(s.talk, { phone: `\u2066${clinic.phone}\u2069` }), quickReplies: [{ title: s.book, value: s.book }] };
+    return { ...base(responseLanguage, { step: 'start' }), reply: fill(s.talk, { phone: `\u2066${clinic.phone}\u2069` }), quickReplies: [{ title: s.book, value: s.book }] };
   }
 
   const askTreatment = (dentist?: string): ChatResponse => ({
-    ...base(lang, { step: 'treatment', dentist }), reply: s.which,
+    ...base(responseLanguage, { step: 'treatment', dentist }), reply: s.which,
     carousel: { label: s.treatments, items: services.map(x => ({
       title: x.name[lang], subtitle: `${minutes(lang, x.minutes, t.treatments.min)} · ${money(lang, x.price, clinic.currency)}`, value: x.name[lang],
     })) },
@@ -140,7 +142,7 @@ export function demoReply(req: ChatRequest): ChatResponse {
   const offerTimes = (serviceId: string, dentist?: string): ChatResponse => {
     const sv = services.find(x => x.id === serviceId)!;
     const dn = dentists.find(d => d.id === dentist);
-    return { ...base(lang, { step: 'time', service: serviceId, dentist }),
+    return { ...base(responseLanguage, { step: 'time', service: serviceId, dentist }),
       reply: fill(s.timesFor, { service: sv.name[lang], dentist: dn ? fill(s.withDentist, { name: dn.name }) : '' }),
       carousel: { label: s.times, items: slots(lang, dentist) } };
   };
@@ -152,11 +154,11 @@ export function demoReply(req: ChatRequest): ChatResponse {
     }
     case 'time':
       if (!st.service) return askTreatment();
-      return { ...base(lang, { step: 'details', service: st.service, slot: msg.slice(0, 120) }), reply: fill(s.details, { slot: msg.slice(0, 120) }) };
+      return { ...base(responseLanguage, { step: 'details', service: st.service, slot: msg.slice(0, 120) }), reply: fill(s.details, { slot: msg.slice(0, 120) }) };
     case 'details': {
       const sv = services.find(x => x.id === st.service);
       const who = msg.split(/[\n,،]/)[0].trim().slice(0, 60);
-      return { ...base(lang, { ...st, step: 'confirm' }),
+      return { ...base(responseLanguage, { ...st, step: 'confirm' }),
         reply: `${s.check}\n*${s.treatment}:* ${sv?.name[lang] ?? ''}\n*${s.when}:* ${st.slot ?? ''}\n*${s.patient}:* ${who}`,
         quickReplies: [{ title: s.confirm, value: s.confirm }, { title: s.change, value: s.change }] };
     }
@@ -165,7 +167,7 @@ export function demoReply(req: ChatRequest): ChatResponse {
       const sv = services.find(x => x.id === st.service);
       const [when, dentist = ''] = String(st.slot ?? '').split(' — ');
       const ref = 'DEMO-' + Math.random().toString(36).slice(2, 6).toUpperCase();
-      return { ...base(lang, { step: 'start' }), reply: s.done,
+      return { ...base(responseLanguage, { step: 'start' }), reply: s.done,
         booking: { reference: ref, when, service: sv?.name[lang] ?? '', dentist, whatsappSent: false, emailCopy: true } };
     }
     default: {

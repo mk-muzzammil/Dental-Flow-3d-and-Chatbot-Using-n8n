@@ -1,0 +1,14 @@
+/* Shared public-site and clinic-admin palette. */
+:root {
+  --df-page: #fafbfc;
+  --df-surface: #ffffff;
+  --df-ink: #0a1a2b;
+  --df-ink-soft: #33465a;
+  --df-muted: #6a7b8c;
+  --df-line: #e1e7ed;
+  --df-mist: #f4f6f8;
+  --df-sky: #e8f0f7;
+  --df-brand: #134a7c;
+  --df-brand-deep: #0b2f52;
+  --df-accent: #3a83c6;
+}

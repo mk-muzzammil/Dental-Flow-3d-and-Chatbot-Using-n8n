@@ -1,14 +1,16 @@
 'use client';
+import { LoadingIndicator } from '@/components/ui/LoadingIndicator';
 import { useEffect, useState } from 'react';
 import { refreshAccess } from './client';
 export function Login() {
   const [busy, setBusy] = useState(false),
-    [error, setError] = useState('');
+    [error, setError] = useState(''),
+    [checking, setChecking] = useState(true);
   useEffect(() => {
     let active = true;
     void refreshAccess().then((ok) => {
       if (ok && active) window.location.replace('/admin/portal');
-    });
+    }).catch(() => undefined).finally(() => { if (active) setChecking(false); });
     return () => {
       active = false;
     };
@@ -48,22 +50,22 @@ export function Login() {
       </a>
       <h1>Clinic owner sign in</h1>
       <p>Manage Google access, scheduled jobs, and recovery records.</p>
-      <form onSubmit={submit}>
+      {checking ? <LoadingIndicator label="Checking your session…" /> : <form onSubmit={submit}>
         <label>
           Email
-          <input name="email" type="email" autoComplete="username" required maxLength={254} />
+          <input disabled={busy} name="email" type="email" autoComplete="username" required maxLength={254} />
         </label>
         <label>
           Password
-          <input name="password" type="password" autoComplete="current-password" required maxLength={1024} />
+          <input disabled={busy} name="password" type="password" autoComplete="current-password" required maxLength={1024} />
         </label>
         {error ? (
           <p role="alert" className="error">
             {error}
           </p>
         ) : null}
-        <button disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
-      </form>
+        <button disabled={busy}>{busy ? <LoadingIndicator inline label="Signing in…" /> : 'Sign in'}</button>
+      </form>}
     </main>
   );
 }

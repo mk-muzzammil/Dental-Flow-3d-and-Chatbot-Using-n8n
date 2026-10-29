@@ -1,4 +1,5 @@
 'use client';
+import { LoadingIndicator } from '@/components/ui/LoadingIndicator';
 import { useState } from 'react';
 import { adminFetch, useAdminData, useClinicTime } from './client';
 export function Integrations() {
@@ -57,6 +58,7 @@ export function Integrations() {
       setBusy(false);
     }
   };
+  if ((connection.loading && !connection.data) || (settings.loading && !settings.data)) return <LoadingIndicator page label="Loading integrations…" />;
   return (
     <>
       <p className="eyebrow">SETUP</p>
@@ -70,18 +72,20 @@ export function Integrations() {
           {connection.error || settings.error}
         </p>
       ) : null}
+      {busy && <LoadingIndicator label="Updating clinic integrations…" />}
+      {(connection.loading || settings.loading) && <LoadingIndicator compact label="Refreshing integration status…" />}
       <section className="card">
         <h2>Owner account</h2>
         <p>
-          <span className="badge">{connection.data?.status || 'Loading…'}</span> {connection.data?.email}
+          <span className="badge">{connection.data?.status || 'Unavailable'}</span> {connection.data?.email}
         </p>
         <p>Updated {displayTime(connection.data?.updatedAt)}</p>
         <div className="actions">
-          <button disabled={busy} onClick={() => void action('connect')}>
+          <button disabled={busy || !connection.data} onClick={() => void action('connect')}>
             {connection.data?.status === 'connected' ? 'Reconnect Google' : 'Connect Google'}
           </button>
           {connection.data?.status !== 'disconnected' ? (
-            <button className="secondary" disabled={busy} onClick={() => void action('disconnect')}>
+            <button className="secondary" disabled={busy || !connection.data} onClick={() => void action('disconnect')}>
               Disconnect
             </button>
           ) : null}
@@ -105,17 +109,17 @@ export function Integrations() {
           <form key={settings.data.sheetId + settings.data.calendarId} onSubmit={save}>
             <label>
               Google Sheet ID
-              <input name="sheetId" defaultValue={settings.data.sheetId} required maxLength={200} />
+              <input disabled={busy} name="sheetId" defaultValue={settings.data.sheetId} required maxLength={200} />
             </label>
             <label>
               Fallback Calendar ID
-              <input name="calendarId" defaultValue={settings.data.calendarId} required maxLength={254} />
+              <input disabled={busy} name="calendarId" defaultValue={settings.data.calendarId} required maxLength={254} />
               <small>
                 Used when the Doctors tab has no active calendars. Doctor calendars are configured below after migration; legacy workbooks use the Doctors tab.
               </small>
             </label>
             <div className="actions">
-              <button disabled={busy}>Save resources</button>
+              <button disabled={busy}>{busy ? <LoadingIndicator inline label="Working…" /> : "Save resources"}</button>
               <button
                 type="button"
                 className="secondary"
@@ -127,7 +131,7 @@ export function Integrations() {
             </div>
           </form>
         ) : (
-          <p>Loading resource selection…</p>
+          <p>Resource selection unavailable.</p>
         )}
       </section>
       <p><a href="/admin/portal/clinic">Manage clinic services, doctors and working hours →</a></p>

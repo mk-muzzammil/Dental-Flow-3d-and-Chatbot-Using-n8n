@@ -1,4 +1,5 @@
 "use client";
+import { LoadingIndicator } from '@/components/ui/LoadingIndicator';
 import { useEffect, useState } from "react";
 import { adminFetch, useAdminData } from "./client";
 import type { ClinicData } from "./ClinicConfiguration";
@@ -82,7 +83,7 @@ export function DoctorEditor({
           </p>
         </div>
         <button
-          disabled={!!draft}
+          disabled={!!draft || busy || source.loading || !source.data}
           onClick={() =>
             edit({
               row: ["", "", "all", "TRUE", "", ""],
@@ -126,18 +127,19 @@ export function DoctorEditor({
               }
             }}
           >
-            Resume interrupted save
+            {busy ? <LoadingIndicator inline label="Recovering save…" /> : "Resume interrupted save"}
           </button>
         </p>
       )}
+      {source.loading && source.data && <LoadingIndicator compact label="Refreshing doctors…" />}
       <label>
         Search doctors
         <input value={search} onChange={(e) => setSearch(e.target.value)} />
       </label>
       {!source.data ? (
-        <p>Loading doctors from Google Sheets…</p>
+        source.loading ? <LoadingIndicator label="Loading doctors from Google Sheets…" /> : null
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="Doctors">
           <table>
             <thead>
               <tr>
@@ -166,7 +168,7 @@ export function DoctorEditor({
                     <td>
                       <button
                         className="secondary"
-                        disabled={!!draft}
+                        disabled={!!draft || busy || source.loading || !source.data}
                         onClick={() => edit(d)}
                       >
                         Edit doctor
@@ -307,7 +309,7 @@ export function DoctorEditor({
             </p>
           </fieldset>
           <div className="actions">
-            <button disabled={busy}>{busy ? "Saving…" : "Save doctor"}</button>
+            <button disabled={busy}>{busy ? <LoadingIndicator inline label="Working…" /> : "Save doctor"}</button>
             <button
               type="button"
               className="secondary"

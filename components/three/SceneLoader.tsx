@@ -5,6 +5,7 @@
  * text of the page appears first.
  */
 import dynamic from 'next/dynamic';
+import { LoadingIndicator } from '@/components/ui/LoadingIndicator';
 import { useEffect, useState } from 'react';
 
 export function ToothArt({ className = '' }: { className?: string }) {
@@ -41,8 +42,8 @@ export function useWebGL() {
   return ok;
 }
 
-// Nothing is drawn while the 3D code loads: the loading screen covers the first moments.
-const Placeholder = () => null;
+// Keep a labelled fallback visible if a scene bundle is still downloading.
+const Placeholder = () => <div className="absolute inset-0 flex items-center justify-center"><LoadingIndicator label="Loading view…" /></div>;
 
 export const HeroScene = dynamic(() => import('./Scenes').then(m => m.HeroScene), { ssr: false, loading: Placeholder });
 export const StoryScene = dynamic(() => import('./Scenes').then(m => m.StoryScene), { ssr: false, loading: Placeholder });

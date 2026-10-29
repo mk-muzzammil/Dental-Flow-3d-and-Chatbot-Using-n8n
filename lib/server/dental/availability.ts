@@ -17,8 +17,11 @@ export function openingFor(
   doctor: string,
   date: string,
 ): Opening | null {
-  const day = weekday(date).toLowerCase(),
-    closed = (r?: Row) => !r || String(r[5]).toUpperCase() === "TRUE";
+  return openingForWeekday(rows, doctor, weekday(date));
+}
+export function openingForWeekday(rows: Row[], doctor: string, weekdayName: string): Opening | null {
+  const day = weekdayName.toLowerCase(),
+    closed = (r?: Row) => !r || String(r[5]).toUpperCase() === "TRUE" || !r[1] || !r[2];
   const clinic = rows.find((r) => !r[6] && String(r[0]).toLowerCase() === day);
   if (closed(clinic)) return null;
   const own = rows.filter(
@@ -28,12 +31,12 @@ export function openingFor(
     ? own.find((r) => String(r[0]).toLowerCase() === day)
     : clinic;
   if (closed(custom)) return null;
-  const open = [String(clinic![1] || "10:00"), String(custom![1] || "10:00")]
+  const open = [String(clinic![1]), String(custom![1])]
     .sort()
     .at(-1)!;
   const close = [
-    String(clinic![2] || "19:00"),
-    String(custom![2] || "19:00"),
+    String(clinic![2]),
+    String(custom![2]),
   ].sort()[0];
   if (open >= close) return null;
   return {
@@ -70,9 +73,11 @@ export function calculateDay(
       date: string;
       doctor: string;
       doctorName: string;
+      doctorOpen: string;
+      doctorClose: string;
     })[],
     slots: [] as string[],
-    byDoctor: [] as { doctor: string; doctorName: string; slots: string[] }[],
+    byDoctor: [] as { doctor: string; doctorName: string; open: string; close: string; breaks: [string,string][]; calendarReadable: boolean; slots: string[] }[],
   };
   if (!service) return { ...base, reason: "service-inactive" };
   if (!validDuration(service.min, interval))
@@ -103,6 +108,8 @@ export function calculateDay(
     const opening = openingFor(data[1], d.id, date);
     if (!opening) continue;
     working++;
+    const schedule = { doctor: d.id, doctorName: d.name, open: opening.open, close: opening.close, breaks: opening.breaks || [], calendarReadable: false, slots: [] as string[] };
+    base.byDoctor.push(schedule);
     if (!cal || cal.errors?.length) {
       unreadable++;
       continue;
@@ -126,13 +133,10 @@ export function calculateDay(
       busy: blocks,
       now,
     });
-    base.byDoctor.push({
-      doctor: d.id,
-      doctorName: d.name,
-      slots: times.map((t) => t.time),
-    });
+    schedule.calendarReadable = true;
+    schedule.slots = times.map((t) => t.time);
     for (const t of times)
-      candidates.push({ ...t, date, doctor: d.id, doctorName: d.name });
+      candidates.push({ ...t, date, doctor: d.id, doctorName: d.name, doctorOpen: opening.open, doctorClose: opening.close });
   }
   const seen = new Map<string, (typeof candidates)[number]>();
   for (const c of candidates) if (!seen.has(c.time)) seen.set(c.time, c);

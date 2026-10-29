@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { LANGS, langLabel, type Dict, type Lang } from '@/lib/i18n';
+import { PUBLIC_LANGS, langLabel, type Dict, type Lang } from '@/lib/i18n';
 import { LogoMark, OpenChatButton } from './ui';
 
 export function Nav({ lang, t, clinicName }: { lang: Lang; t: Dict; clinicName: string }) {
@@ -105,7 +105,7 @@ export function Nav({ lang, t, clinicName }: { lang: Lang; t: Dict; clinicName: 
 function LangSwitch({ lang, label }: { lang: Lang; label: string }) {
   return (
     <div role="group" aria-label={label} className="flex items-center rounded-full bg-white/70 p-1 ring-1 ring-line">
-      {LANGS.map(l => (
+      {PUBLIC_LANGS.map(l => (
         <Link
           key={l}
           href={`/${l}`}

@@ -1,4 +1,5 @@
 'use client';
+import { LoadingIndicator } from '@/components/ui/LoadingIndicator';
 /**
  * "View My Appointments" / "Cancel an Appointment": the visitor's upcoming
  * appointments as cards inside the chat. In cancel mode (or from a viewed
@@ -80,7 +81,7 @@ function Card({ a, lang, t, showCancel, prominent, onCancel, onReschedule }: {
           {step === 'idle' ? (
             <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="border-t border-line/70 px-3 py-2">
               <button type="button" onClick={() => setStep('confirm')}
-                className={`w-full rounded-xl py-2 text-[13px] font-semibold transition ${prominent ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100' : 'text-rose-700 hover:bg-rose-50'}`}>
+                className={`min-h-11 w-full rounded-xl py-2 text-[13px] font-semibold transition ${prominent ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100' : 'text-rose-700 hover:bg-rose-50'}`}>
                 {t.apptCancel}
               </button>
             </motion.div>
@@ -90,11 +91,11 @@ function Card({ a, lang, t, showCancel, prominent, onCancel, onReschedule }: {
               <p className="mb-2 text-[13px] font-semibold text-rose-900">{t.confirmCancel}</p>
               <div className="flex gap-2">
                 <button type="button" onClick={yes} disabled={step === 'busy'}
-                  className="flex-1 rounded-xl bg-rose-600 py-2 text-[13px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60">
-                  {step === 'busy' ? '…' : t.yesCancel}
+                  className="min-h-11 min-w-0 flex-1 rounded-xl bg-rose-600 py-2 text-[13px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60">
+                  {step === 'busy' ? <LoadingIndicator inline label={lang === "ur" ? "منسوخ ہو رہا ہے…" : lang === "ar" ? "جارٍ الإلغاء…" : "Cancelling…"} /> : t.yesCancel}
                 </button>
                 <button type="button" onClick={() => setStep('idle')} disabled={step === 'busy'}
-                  className="flex-1 rounded-xl bg-white py-2 text-[13px] font-semibold text-ink ring-1 ring-line transition hover:bg-mist disabled:opacity-60">
+                  className="min-h-11 min-w-0 flex-1 rounded-xl bg-white py-2 text-[13px] font-semibold text-ink ring-1 ring-line transition hover:bg-mist disabled:opacity-60">
                   {t.keepIt}
                 </button>
               </div>

@@ -19,7 +19,7 @@ export function withFollowUp(text: string, lang: string, kind: 'general' | 'book
 /** Keep a useful next step even when the model omits one, including scripted demo replies. */
 export function continueChat(response: ChatResponse): ChatResponse {
   const lang = response.lang;
-  const t = dictionaries[lang === 'ur' || lang === 'ar' ? lang : 'en'].chat;
+  const t = dictionaries[lang === 'roman-ur' ? 'ur' : lang === 'ur' || lang === 'ar' ? lang : 'en'].chat;
   const quickReplies = response.booking
     ? [t.starters[1], t.starters[2], t.starters[0]].map(title => ({ title, value: title }))
     : response.quickReplies;

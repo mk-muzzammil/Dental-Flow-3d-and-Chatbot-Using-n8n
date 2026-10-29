@@ -1,4 +1,5 @@
 "use client";
+import { LoadingIndicator } from '@/components/ui/LoadingIndicator';
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { useClinic } from "@/components/ClinicProvider";
@@ -47,7 +48,8 @@ export function BookingPanel({
     result: Booking & { demo?: boolean; endTime?: string; minutes?: number },
   ) => void;
 }) {
-  const { services } = useClinic(),
+  const clinicData = useClinic();
+  const { services } = clinicData,
     ur = lang === "ur";
   const [service, setService] = useState(start.service || ""),
     [step, setStep] = useState<"service" | "day" | "time" | "confirmation">(
@@ -170,6 +172,28 @@ export function BookingPanel({
       document.removeEventListener("visibilitychange", updateWeek);
     };
   }, [week, step, busy]);
+  const scheduleSignature = JSON.stringify([clinicData.scheduleVersion, clinicData.services, clinicData.clinic, clinicData.dentists]);
+  const previousSchedule = useRef(scheduleSignature);
+  useEffect(() => {
+    if (previousSchedule.current === scheduleSignature || busy || key.current) return;
+    previousSchedule.current = scheduleSignature;
+    if (step === "service") return;
+    setPick(null);
+    setTimes(null);
+    setWeek(null);
+    setStep(services.some(s => s.id === service) ? "day" : "service");
+    setError(slotError("configuration-changed", ur));
+    setRefresh(n => n + 1);
+  }, [scheduleSignature, busy, step, service, services, ur]);
+  useEffect(() => {
+    if (step !== "day" && step !== "time") return;
+    const update = () => {
+      if (!document.hidden && !busy && !key.current) setRefresh(n => n + 1);
+    };
+    const timer = window.setInterval(update, 60_000);
+    window.addEventListener("focus", update);
+    return () => { clearInterval(timer); window.removeEventListener("focus", update); };
+  }, [step, busy]);
   const back = () => {
     setError("");
     key.current = "";
@@ -236,7 +260,7 @@ export function BookingPanel({
       onConfirm(
         {
           serviceId: service,
-          serviceName: svc.name.en,
+          serviceName: svc.name[lang],
           dentistId: pick.doctor,
           dentistName: pick.doctorName,
           date: pick.date,
@@ -285,7 +309,7 @@ export function BookingPanel({
           ×
         </button>
       </header>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-3">
+      <div className={"min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-3" + (loading ? " flex flex-col" : "")}>
         {weekUpdated && (
           <p role="status" className="rounded-xl border border-line bg-sky p-3 text-sm text-brand">
             {ur ? "نیا ہفتہ شروع ہو گیا ہے۔ تازہ دستیاب دن اور وقت منتخب کریں۔" : "A new week has started. Please choose from the updated days and times."}
@@ -319,9 +343,7 @@ export function BookingPanel({
           </p>
         )}
         {loading && (
-          <p role="status" className="text-sm text-muted">
-            {t.loading}
-          </p>
+          <div className="flex flex-1 items-center justify-center"><LoadingIndicator label={t.loading} /></div>
         )}
         {step === "service" && (
           <div className="grid gap-2">
@@ -359,7 +381,7 @@ export function BookingPanel({
                 });
                 const result = await r.json();
                 if (!r.ok || !result.ok) throw new Error(result.error || "unavailable");
-                if (svc) onConfirm({ serviceId: service, serviceName: svc.name.en, dentistId: start.dentist || "any", dentistName: result.dentist, date: result.date, time: result.time, ...form }, result);
+                if (svc) onConfirm({ serviceId: service, serviceName: svc.name[lang], dentistId: start.dentist || "any", dentistName: result.dentist, date: result.date, time: result.time, ...form }, result);
               } catch (e) {
                 setError(e instanceof Error ? e.message : "unavailable");
               } finally {
@@ -367,7 +389,7 @@ export function BookingPanel({
               }
             }}
           >
-            {ur
+            {busy ? <LoadingIndicator inline label={ur ? "اپائنٹمنٹ کی تصدیق ہو رہی ہے…" : lang === "ar" ? "جارٍ تأكيد الموعد…" : "Confirming appointment…"} /> : ur
               ? "نامکمل تبدیلی دوبارہ مکمل کریں"
               : "Resume interrupted time change"}
           </button>
@@ -418,13 +440,25 @@ export function BookingPanel({
         {step === "time" && times && !loading && (
           <>
             <p className="text-sm text-ink">{dayTitle(lang, day, true)}</p>
+            {!!times.byDoctor?.length && <section className="rounded-xl border border-line bg-sky p-3 text-sm text-ink">
+              <h4 className="font-semibold">{ur ? 'اس دن ڈاکٹر کے اوقات' : 'Doctor hours for this day'}</h4>
+              <p className="mt-1 text-xs text-muted">{ur ? 'یہ اوقات کار ہیں۔ صرف نیچے دیے گئے اوقات بک کیے جا سکتے ہیں۔' : 'Working hours are shown here. Book only an available time below.'}</p>
+              <ul className="mt-2 space-y-3">
+                {times.byDoctor.map(d => <li key={d.doctor}>
+                  <p className="font-semibold" dir="auto">{d.doctorName}</p>
+                  <p dir="ltr" className="tabular-nums">{clock(lang,d.open)} – {clock(lang,d.close)}</p>
+                  {d.breaks?.map(([from,to],i)=><p key={i} className="text-xs text-muted">{ur ? 'وقفہ' : 'Break'}: <bdi>{clock(lang,from)} – {clock(lang,to)}</bdi></p>)}
+                  {!d.calendarReadable && <p className="text-xs text-muted">{ur ? 'فی الحال دستیابی چیک نہیں ہو سکی۔' : 'Availability could not be checked.'}</p>}
+                </li>)}
+              </ul>
+            </section>}
             {times.options.length ? (
               <div className="grid grid-cols-1 gap-2" aria-label={words.time}>
                 {times.options.map((o) => (
                   <button
                     key={o.startsAt}
                     className={tile + " tabular-nums"}
-                    aria-label={clock(lang, o.time)}
+                    aria-label={`${clock(lang, o.time)} · ${o.doctorName}`}
                     onClick={() => {
                       setPick(o);
                       key.current = "";
@@ -433,9 +467,10 @@ export function BookingPanel({
                     }}
                   >
                     <span className="min-w-0">
-                      <span className="block font-semibold">{clock(lang, o.time)}</span>
+                      <span className="block font-semibold"><bdi dir="ltr">{clock(lang, o.time)}</bdi></span>
+                      <span className="mt-1 block break-words text-sm text-brand" dir="auto">{o.doctorName}</span>
                       <span className="mt-1 block text-xs text-muted">
-                        {ur ? "اختتام" : "Ends"} {clock(lang, o.endTime)}
+                        {ur ? "اختتام" : "Ends"} <bdi dir="ltr">{clock(lang, o.endTime)}</bdi>
                       </span>
                     </span>
                     <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sky text-brand rtl:rotate-180">→</span>
@@ -515,7 +550,7 @@ export function BookingPanel({
               className="min-h-11 w-full rounded-xl bg-brand px-3 py-3 text-sm font-semibold text-white transition-colors enabled:hover:bg-brand-deep disabled:opacity-60"
             >
               {busy
-                ? t.loading
+                ? <LoadingIndicator inline label={ur ? "اپائنٹمنٹ کی تصدیق ہو رہی ہے…" : lang === "ar" ? "جارٍ تأكيد الموعد…" : "Confirming appointment…"} />
                 : start.reschedule
                   ? ur
                     ? "نئے وقت کی تصدیق"

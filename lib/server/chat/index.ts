@@ -1,4 +1,5 @@
 import 'server-only';
+import { replyLanguage } from '@/lib/chat-language';
 import { currentWeek, localInstant } from '@/lib/availability';
 import { readClinic } from '../dental/clinic';
 import { DF } from '../dental/rules';
@@ -18,12 +19,13 @@ const typed = (value: string) =>
     .map((l) => l.replace(/^([\s\u200b-\u200f\u2060\ufeff]*)\[/, '$1('))
     .join('\n  ');
 const uiNames: Record<string, string> = { en: 'English', ur: 'Urdu', ar: 'Arabic', 'roman-ur': 'Roman Urdu' };
-export function prompt(clinicBlock: string, lang: string, tz = clinicDefaults().TIMEZONE) {
+export function prompt(clinicBlock: string, lang: string, tz = clinicDefaults().TIMEZONE, responseLanguage = lang === 'ur' ? 'roman-ur' : 'en') {
   const now = new Date(),
     c = clinicDefaults();
   const format = (date: Date, options: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat('en-GB', { timeZone: tz, ...options }).format(date);
   const values: Record<string, string> = {
+    replyLanguage: responseLanguage === 'roman-ur' ? 'Roman Urdu (Urdu in English/Latin alphabets only)' : 'English',
     clinicName: c.CLINIC_NAME,
     clinicPhone: c.CLINIC_PHONE,
     clinicBlock,
@@ -106,7 +108,7 @@ function validateTool(call: FunctionCall) {
 }
 export async function executeTool(call: FunctionCall, requestKey: string, signal: AbortSignal) {
   const args = validateTool(call),
-    lang = /^ar/.test(args.lang) ? 'ar' : /^ur/.test(args.lang) ? 'ur' : 'en';
+    lang = /^(ur|roman-ur)/.test(args.lang) ? 'ur' : 'en';
   switch (call.name) {
     case 'get_next_slots': {
       const result=await slots({...args,service:args.service,mode:'week',lang},signal);
@@ -128,6 +130,7 @@ export async function chat(body: ChatRequest, requestKey: string, signal: AbortS
   await initializeDatabase();
   const client = new GoogleGenAI({ apiKey: required('GEMINI_API_KEY') });
   const heard = body.audio ? await transcribe(client, body.audio, signal) : undefined;
+  const responseLanguage = replyLanguage(heard?.said || body.message, body.lang, body.history);
   const block = await clinicPrompt(signal);
   const clinicRows=await readClinic(signal);
   const configuredTimezone=String(DF.settings(clinicRows[2]).timezone||clinicDefaults().TIMEZONE);
@@ -159,7 +162,7 @@ export async function chat(body: ChatRequest, requestKey: string, signal: AbortS
         contents,
         config: {
           temperature: 0.3,
-          systemInstruction: prompt(block, body.lang, configuredTimezone),
+          systemInstruction: prompt(block, body.lang, configuredTimezone, responseLanguage),
           tools: [{ functionDeclarations: declarations as FunctionDeclaration[] }],
           abortSignal: signal,
         },
@@ -195,7 +198,7 @@ export async function chat(body: ChatRequest, requestKey: string, signal: AbortS
     /* Completed booking tool results must survive a later model failure. */
   }
   return prepareReply(
-    { CLINIC_PHONE: clinicDefaults().CLINIC_PHONE, uiLang: body.lang, isVoice: !!body.audio },
+    { CLINIC_PHONE: clinicDefaults().CLINIC_PHONE, uiLang: responseLanguage, isVoice: !!body.audio },
     { output, intermediateSteps: steps },
     heard,
   ).response;

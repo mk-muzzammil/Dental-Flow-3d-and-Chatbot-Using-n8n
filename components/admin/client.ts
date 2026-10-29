@@ -40,6 +40,7 @@ export async function adminFetch<T>(url: string, options: RequestInit = {}): Pro
 export function useAdminData<T>(url: string, poll = false) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState(''),
+    [loading, setLoading] = useState(true),
     [version, setVersion] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
@@ -47,6 +48,7 @@ export function useAdminData<T>(url: string, poll = false) {
     const load = async () => {
       if (pending) return;
       pending = true;
+      setLoading(true);
       try {
         const result = await adminFetch<T>(url, { signal: controller.signal });
         if (!controller.signal.aborted) {
@@ -57,6 +59,7 @@ export function useAdminData<T>(url: string, poll = false) {
         if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Unable to load');
       } finally {
         pending = false;
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
     void load();
@@ -71,7 +74,7 @@ export function useAdminData<T>(url: string, poll = false) {
       document.removeEventListener('visibilitychange', visible);
     };
   }, [url, poll, version]);
-  return { data, error, reload: () => setVersion((x) => x + 1) };
+  return { data, error, loading, reload: () => setVersion((x) => x + 1) };
 }
 export const ClinicTimezone = createContext('Asia/Karachi');
 export function useClinicTime() {

@@ -36,7 +36,7 @@ export function encryptDoctorConnections(sheetId: string, value: Record<string, 
 export function validateConfiguration(value: unknown): ClinicConfiguration {
   if (!value || typeof value !== 'object') throw new AppError('invalid_clinic_configuration', 400);
   const config = value as ClinicConfiguration;
-  for (const [key, width] of Object.entries({ services: 11, hours: 7, settings: 2, holidays: 2, faq: 6, specializations: 5 })) {
+  for (const [key, width] of Object.entries({ services: 11, hours: 7, settings: 2, holidays: 2, faq: 7, specializations: 5 })) {
     const rows = config[key as keyof ClinicConfiguration];
     if (!Array.isArray(rows) || rows.length > 1000 || rows.some(row => !Array.isArray(row) || row.length > width || row.some(cell => !['string', 'number', 'boolean'].includes(typeof cell) || String(cell).length > 10000)))
       throw new AppError('invalid_clinic_configuration', 400);

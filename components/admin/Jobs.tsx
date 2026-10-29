@@ -1,4 +1,5 @@
 'use client';
+import { LoadingIndicator } from '@/components/ui/LoadingIndicator';
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { adminFetch, useAdminData, useClinicTime, displayAge } from './client';
@@ -110,7 +111,7 @@ export function Jobs() {
           restart. A live run updates the selected Google Sheet and calendars and may send expiry emails.
         </p>
       ) : null}
-      {!jobData.data && !jobData.error ? <p>Loading registered jobs…</p> : null}
+      {jobData.loading && <LoadingIndicator compact={!!jobData.data} label={jobData.data ? "Refreshing jobs…" : "Loading registered jobs…"} />}
       {jobData.error || history.error ? (
         <p role="alert" className="error">
           {jobData.error || history.error}
@@ -149,7 +150,7 @@ export function Jobs() {
           </dl>
           <div className="actions">
             <button disabled={busy || !job.enabled || jobData.data?.appMode !== 'live'} onClick={() => void run(job.id)}>
-              {busy ? 'Working…' : 'Run now'}
+              {busy ? <LoadingIndicator inline label="Working…" /> : 'Run now'}
             </button>
             <label>
               Scheduling state
@@ -211,9 +212,10 @@ export function Jobs() {
             To (UTC)
             <input type="date" name="to" />
           </label>
-          <button className="secondary">Apply filters</button>
+          <button className="secondary" disabled={history.loading}>{history.loading ? <LoadingIndicator inline label="Loading…" /> : "Apply filters"}</button>
         </form>
-        <RunTable runs={history.data?.runs || []} />
+        {history.loading && <LoadingIndicator compact={!!history.data} label={history.data ? "Refreshing execution history…" : "Loading execution history…"} />}
+        {history.data && <RunTable runs={history.data.runs} />}
         <div className="actions">
           {cursor ? (
             <button className="secondary" onClick={() => setCursor('')}>
@@ -233,7 +235,7 @@ export function Jobs() {
 export function RunTable({ runs }: { runs: RunView[] }) {
   const { displayTime } = useClinicTime();
   return (
-    <div className="table-wrap">
+    <div className="table-wrap" tabIndex={0} role="region" aria-label="Execution history">
       <table>
         <thead>
           <tr>
@@ -282,7 +284,7 @@ export function RunTable({ runs }: { runs: RunView[] }) {
 }
 export function RunDetail({ runId }: { runId: string }) {
   const { displayTime } = useClinicTime();
-  const { data, error } = useAdminData<{ run: RunView }>(
+  const { data, error, loading } = useAdminData<{ run: RunView }>(
       `/api/admin/cron/runs/${encodeURIComponent(runId)}`,
       true,
     ),
@@ -291,6 +293,7 @@ export function RunDetail({ runId }: { runId: string }) {
     <>
       <Link href="/admin/portal/cron">← All executions</Link>
       <h1>Execution details</h1>
+      {run && loading && <LoadingIndicator compact label="Refreshing execution…" />}
       {error ? (
         <p role="alert" className="error">
           {error}
@@ -336,7 +339,7 @@ export function RunDetail({ runId }: { runId: string }) {
           <p className="muted">Patient details and provider payloads are excluded from execution logs.</p>
         </section>
       ) : (
-        <p>Loading execution…</p>
+        loading ? <LoadingIndicator label="Loading execution…" /> : <p>Execution unavailable.</p>
       )}
     </>
   );

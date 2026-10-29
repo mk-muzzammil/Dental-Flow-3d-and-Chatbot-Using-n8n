@@ -1,4 +1,5 @@
 "use client";
+import { LoadingIndicator } from '@/components/ui/LoadingIndicator';
 import { useEffect, useState } from "react";
 import { adminFetch, useAdminData } from "./client";
 import {
@@ -26,7 +27,7 @@ export function ClinicConfiguration() {
         {source.error}
       </p>
     );
-  if (!source.data) return <p role="status">Loading clinic configuration…</p>;
+  if (!source.data) return <LoadingIndicator page label="Loading clinic configuration…" />;
   if (!source.data.migrated)
     return (
       <p className="notice">
@@ -34,11 +35,14 @@ export function ClinicConfiguration() {
       </p>
     );
   return (
+    <>
+    {source.loading && <LoadingIndicator compact label="Refreshing clinic settings…" />}
     <ConfigurationForms
       key={source.data.version}
       initial={source.data}
       reload={source.reload}
     />
+    </>
   );
 }
 function ConfigurationForms({
@@ -126,13 +130,15 @@ function ConfigurationForms({
   const selected = tab in sections ? (tab as Section) : null;
   const meta = selected ? sections[selected] : null;
   return (
-    <div className="clinic-manager">
+    <fieldset disabled={busy} className="clinic-manager unstyled-fieldset">
       <p className="eyebrow">Clinic workspace</p>
       <h1>Manage your clinic</h1>
       <p className="muted">
         Edit treatments, schedules and the information patients receive. Doctor
         records sync with your website’s Google Sheet.
       </p>
+      {doctors.loading && <LoadingIndicator compact label="Loading doctor schedules…" />}
+      {doctors.error && <p role="alert" className="error">{doctors.error}</p>}
       <div
         className="clinic-tabs"
         role="navigation"
@@ -326,7 +332,7 @@ function ConfigurationForms({
                   </select>
                 </label>
               </div>
-              <div className="table-wrap">
+              <div className="table-wrap" tabIndex={0} role="region" aria-label="Clinic records">
                 <table>
                   <thead>
                     <tr>
@@ -542,7 +548,7 @@ function ConfigurationForms({
               disabled={busy || !dirty || editing !== null}
               onClick={() => void save()}
             >
-              {busy ? "Saving…" : "Save changes"}
+              {busy ? <LoadingIndicator inline label="Saving changes…" /> : "Save changes"}
             </button>
             <button
               className="secondary"
@@ -558,6 +564,6 @@ function ConfigurationForms({
           </div>
         </>
       )}
-    </div>
+    </fieldset>
   );
 }

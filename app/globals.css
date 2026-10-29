@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./theme.css";
 
 /* Fonts are bundled with the site (no call to Google at run time). A browser
    only downloads the ones the page actually uses. */
@@ -33,15 +34,15 @@
   --font-urdu: "Noto Nastaliq Urdu", "IBM Plex Sans Arabic", "Manrope Variable", system-ui, sans-serif;
 
   /* deep medical blues, clean whites, soft greys */
-  --color-ink: #0a1a2b;
-  --color-ink-soft: #33465a;
-  --color-muted: #6a7b8c;
-  --color-line: #e1e7ed;
-  --color-mist: #f4f6f8;
-  --color-sky: #e8f0f7;
-  --color-brand: #134a7c;
-  --color-brand-deep: #0b2f52;
-  --color-accent: #3a83c6;
+  --color-ink: var(--df-ink);
+  --color-ink-soft: var(--df-ink-soft);
+  --color-muted: var(--df-muted);
+  --color-line: var(--df-line);
+  --color-mist: var(--df-mist);
+  --color-sky: var(--df-sky);
+  --color-brand: var(--df-brand);
+  --color-brand-deep: var(--df-brand-deep);
+  --color-accent: var(--df-accent);
   --color-ok: #047857;
 
   --shadow-soft: 0 24px 60px -30px rgb(11 27 43 / 0.28);
@@ -50,7 +51,7 @@
 }
 
 :root {
-  --page-bg: #fafbfc;
+  --page-bg: var(--df-page);
   color-scheme: light;
 }
 
@@ -136,27 +137,14 @@ html[lang="ar"] :where(h1, h2, h3) { letter-spacing: 0; }
     radial-gradient(40% 35% at 50% 45%, rgb(43 123 234 / 0.12), transparent 70%),
     radial-gradient(60% 50% at 50% 110%, rgb(230 244 249 / 0.9), transparent 70%);
 }
-.df-loader__inner { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1.1rem; transition: transform 0.7s var(--ease-out-quart); }
-.df-loader__mark { position: relative; width: 76px; height: 76px; display: grid; place-items: center; }
-.df-loader__ring { position: absolute; inset: 0; animation: df-spin 1.4s linear infinite; }
-.df-loader__ring circle { stroke-dasharray: 60 180; stroke-linecap: round; }
-.df-loader__name { font-size: 0.95rem; font-weight: 600; letter-spacing: -0.01em; color: var(--color-ink); }
-.df-loader__bar { width: 120px; height: 3px; border-radius: 3px; background: var(--color-line); overflow: hidden; }
-.df-loader__bar::after { content: ""; display: block; width: 40%; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--color-brand), var(--color-accent)); animation: df-bar 1.1s var(--ease-out-quart) infinite; }
 html[data-ready] .df-loader { opacity: 0; visibility: hidden; pointer-events: none; }
-html[data-ready] .df-loader__inner { transform: scale(1.06); }
 html:not(.js) .df-loader { display: none; }
-@keyframes df-spin { to { transform: rotate(360deg); } }
-@keyframes df-bar { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
 
 @keyframes rise { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
 @keyframes rise-scene { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
 .rise { animation: rise 0.9s var(--ease-out-quart) var(--rise-delay, 0s) both; }
 .rise-scene { animation: rise-scene 1.3s var(--ease-out-quart) 0.1s both; }
 html.js:not([data-ready]) :is(.rise, .rise-scene) { animation-play-state: paused; }
-@media (prefers-reduced-motion: reduce) {
-  .df-loader__ring, .df-loader__bar::after { animation: none !important; }
-}
 
 /* ------------------------------------------------------------ type */
 .font-display { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.01em; }
@@ -196,4 +184,28 @@ html[lang="ur"] .nav-clinic-name {
   font-size: clamp(1rem, 4.5vw, 1.3125rem);
   line-height: 2.4;
   padding-block: 0.15em;
+}
+
+/* Treatment copy follows the hero's column width and rhythm. Measured panel
+   heights keep the 3D scroll sequence aligned when translated text grows. */
+.experience-treatment {
+  min-height: 100svh;
+  padding-top: max(28svh, calc(var(--hero-header-bottom, 80px) + 2rem));
+  padding-bottom: 2.5rem;
+}
+html[lang="ur"] .experience-treatment-title {
+  font-size: clamp(1.75rem, 3.5vw, 3rem);
+  line-height: 1.95;
+}
+html[lang="ur"] .experience-copy .eyebrow,
+html[lang="ur"] .experience-description,
+html[lang="ur"] .experience-detail,
+html[lang="ur"] .experience-points {
+  line-height: 2.2;
+}
+@media (min-width: 768px) {
+  .experience-treatment {
+    padding-top: calc(var(--hero-header-bottom, 80px) + 2rem);
+    padding-bottom: 3rem;
+  }
 }

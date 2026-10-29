@@ -87,6 +87,7 @@ export const sections = {
       { label: "Arabic answer", kind: "long" },
       { label: "Urdu answer", kind: "long" },
       { label: "Active", kind: "boolean" },
+      { label: "Urdu question" },
     ],
   },
 } satisfies Record<
